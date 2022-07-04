@@ -24,3 +24,5 @@ doc/html
 *htmlcov/*
 .eggs
 lmfit/version.py
+.python-version
+
