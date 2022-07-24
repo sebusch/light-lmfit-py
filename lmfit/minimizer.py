@@ -390,7 +390,7 @@ class Minimizer:
     _err_max_evals = ("Too many function calls (max set to {:i})! Use:"
                       " minimize(func, params, ..., max_nfev=NNN)"
                       " to increase this maximum.")
-
+    @profile
     def __init__(self, userfcn, params, fcn_args=None, fcn_kws=None,
                  iter_cb=None, scale_covar=True, nan_policy='raise',
                  reduce_fcn=None, calc_covar=True, max_nfev=None, **kws):
@@ -536,6 +536,7 @@ class Minimizer:
         """Return Parameter values in a simple dictionary."""
         return {name: p.value for name, p in self.result.params.items()}
 
+#    @profile
     def __residual(self, fvars, apply_bounds_transformation=True):
         """Residual function used for least-squares fit.
 
@@ -560,22 +561,30 @@ class Minimizer:
 
         """
         params = self.result.params
-
+        # _dict = {}
+        _dict = []
+        # print("self params: ", self.params['g1_fwhm'].value)
+        # print("result params: ", self.result.params['g1_fwhm'].value)
         if fvars.shape == ():
             fvars = fvars.reshape((1,))
 
         if apply_bounds_transformation:
             for name, val in zip(self.result.var_names, fvars):
-                params[name].value = params[name].from_internal(val)
+                # params[name].value = params[name].from_internal(val)
+                # _dict[name] = params[name].from_internal(val)
+                _dict.append(params[name].from_internal(val))
         else:
             for name, val in zip(self.result.var_names, fvars):
-                params[name].value = val
-        params.update_constraints()
+                # params[name].value = val
+                _dict.append(val)
+        
+        # params.update_constraints() # NOTE JHu: we don't need to call this at each iteration
 
         if self.max_nfev is None:
             self.max_nfev = 200000*(len(fvars)+1)
 
         self.result.nfev += 1
+        nfev = self.result.nfev
         self.result.last_internal_values = fvars
         if self.result.nfev > self.max_nfev:
             self.result.aborted = True
@@ -584,8 +593,11 @@ class Minimizer:
             self.result.success = False
             raise AbortFitException(f"fit aborted: too many function evaluations {self.max_nfev}")
 
-        out = self.userfcn(params, *self.userargs, **self.userkws)
+        # print("created dict: ", _dict)
+        # out = self.userfcn(params, *self.userargs, **self.userkws)
 
+        out = self.userfcn(_dict, *self.userargs, nfev, **self.userkws)
+ 
         if callable(self.iter_cb):
             abort = self.iter_cb(params, self.result.nfev, out,
                                  *self.userargs, **self.userkws)
@@ -598,8 +610,10 @@ class Minimizer:
             self.result.success = False
             raise AbortFitException("fit aborted by user.")
         else:
-            return _nan_policy(np.asarray(out).ravel(),
+            if nfev < 0: #NOTE how frequently we should check nan_policy
+                out = _nan_policy(np.asarray(out).ravel(),
                                nan_policy=self.nan_policy)
+            return out
 
     def __jacobian(self, fvars):
         """Return analytical jacobian to be used with Levenberg-Marquardt.
@@ -658,7 +672,7 @@ class Minimizer:
             if isinstance(r, np.ndarray) and r.size > 1:
                 r = r.sum()
         return r
-
+    @profile
     def prepare_fit(self, params=None):
         """Prepare parameters for fitting.
 
@@ -697,7 +711,8 @@ class Minimizer:
         if params is not None:
             self.params = params
         if isinstance(self.params, Parameters):
-            result.params = deepcopy(self.params)
+            # result.params = deepcopy(self.params)
+            result.params = self.params
         elif isinstance(self.params, (list, tuple)):
             result.params = Parameters()
             for par in self.params:
@@ -732,7 +747,6 @@ class Minimizer:
         result.nvarys = len(result.var_names)
         result.init_values = {n: v for n, v in zip(result.var_names,
                                                    result.init_vals)}
-
         # set up reduce function for scalar minimizers
         #    1. user supplied callable
         #    2. string starting with 'neglogc' or 'negent'

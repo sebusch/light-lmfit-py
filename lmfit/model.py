@@ -742,7 +742,8 @@ class Model:
         msg = f'guess() not implemented for {cname}'
         raise NotImplementedError(msg)
 
-    def _residual(self, params, data, weights, **kwargs):
+#    @profile
+    def _residual(self, params, data, weights, nfev=-1, **kwargs):
         """Return the residual.
 
         Default residual: ``(data-model)*weights``.
@@ -762,25 +763,27 @@ class Model:
 
         """
         model = self.eval(params, **kwargs)
-        if self.nan_policy == 'raise' and not np.all(np.isfinite(model)):
-            msg = ('The model function generated NaN values and the fit '
-                   'aborted! Please check your model function and/or set '
-                   'boundaries on parameters where applicable. In cases like '
-                   'this, using "nan_policy=\'omit\'" will probably not work.')
-            raise ValueError(msg)
+        if nfev < 0:
+            if self.nan_policy == 'raise' and not np.all(np.isfinite(model)):
+                msg = ('The model function generated NaN values and the fit '
+                    'aborted! Please check your model function and/or set '
+                    'boundaries on parameters where applicable. In cases like '
+                    'this, using "nan_policy=\'omit\'" will probably not work.')
+                raise ValueError(msg)
 
         diff = model - data
 
-        if diff.dtype == complex:
-            # data/model are complex
-            diff = diff.ravel().view(float)
-            if weights is not None:
-                if weights.dtype == complex:
-                    # weights are complex
-                    weights = weights.ravel().view(float)
-                else:
-                    # real weights but complex data
-                    weights = (weights + 1j * weights).ravel().view(float)
+        if nfev < 0:
+            if diff.dtype == complex:
+                # data/model are complex
+                diff = diff.ravel().view(float)
+                if weights is not None:
+                    if weights.dtype == complex:
+                        # weights are complex
+                        weights = weights.ravel().view(float)
+                    else:
+                        # real weights but complex data
+                        weights = (weights + 1j * weights).ravel().view(float)
         if weights is not None:
             diff *= weights
         return np.asarray(diff).ravel()  # for compatibility with pandas.Series
@@ -802,28 +805,33 @@ class Model:
 
         # 1. fill in in all parameter values
         for name, par in params.items():
-            if strip:
+            # print("make funcargs: ", par)
+            if self._prefix:
                 name = self._strip_prefix(name)
-            if name in self._func_allargs or self._func_haskeywords:
-                out[name] = par.value
 
+            if name in self._func_allargs or self._func_haskeywords:
+                # out[name] = par.value
+                out[name] = par
         # 2. for each function argument, use 'prefix+varname' in params,
         # avoiding possible name collisions with unprefixed params
-        if len(self._prefix) > 0:
-            for fullname in self._param_names:
-                if fullname in params:
-                    name = self._strip_prefix(fullname)
-                    if name in self._func_allargs or self._func_haskeywords:
-                        out[name] = params[fullname].value
+        # if len(self._prefix) > 0:
+        #     for fullname in self._param_names:
+        #         print("fullname: ", fullname)
+        #         if fullname in params:
+        #             name = self._strip_prefix(fullname)
+        #             if name in self._func_allargs or self._func_haskeywords:
+        #                 out[name] = params[fullname].value
 
         # 3. kwargs handled slightly differently -- may set param value too!
         for name, val in kwargs.items():
+            # print("kwargs: ", name)
             if strip:
                 name = self._strip_prefix(name)
             if name in self._func_allargs or self._func_haskeywords:
                 out[name] = val
                 if name in params:
                     params[name].value = val
+        # print("make_funcargs returns: ", out)
         return out
 
     def _make_all_args(self, params=None, **kwargs):
@@ -865,7 +873,8 @@ class Model:
         or `complex` value.
 
         """
-        return self.func(**self.make_funcargs(params, kwargs))
+        _dic = self.make_funcargs(params, kwargs)
+        return self.func(**_dic)
 
     @property
     def components(self):
@@ -893,7 +902,7 @@ class Model:
         if len(key) < 1:
             key = self._name
         return {key: self.eval(params=params, **kwargs)}
-
+    
     def fit(self, data, params=None, weights=None, method='leastsq',
             iter_cb=None, scale_covar=True, verbose=False, fit_kws=None,
             nan_policy=None, calc_covar=True, max_nfev=None, **kwargs):
@@ -1150,8 +1159,9 @@ class CompositeModel(Model):
                 f"{self._known_ops.get(self.op, self.op)} "
                 f"{self.right._reprstring(long=long)})")
 
-    def eval(self, params=None, **kwargs):
+    def eval_init(self, params=None, **kwargs):
         """Evaluate model function for composite model."""
+        # print("composite eval: ", params)
         return self.op(self.left.eval(params=params, **kwargs),
                        self.right.eval(params=params, **kwargs))
 
@@ -1315,7 +1325,7 @@ class ModelResult(Minimizer):
     can be used to modify and re-run the fit for the Model.
 
     """
-
+    @profile
     def __init__(self, model, params, data=None, weights=None,
                  method='leastsq', fcn_args=None, fcn_kws=None,
                  iter_cb=None, scale_covar=True, nan_policy='raise',
@@ -1366,7 +1376,7 @@ class ModelResult(Minimizer):
                            iter_cb=iter_cb, nan_policy=nan_policy,
                            scale_covar=scale_covar, calc_covar=calc_covar,
                            max_nfev=max_nfev, **fit_kws)
-
+    @profile
     def fit(self, data=None, params=None, weights=None, method=None,
             nan_policy=None, **kwargs):
         """Re-perform fit for a Model, given data and params.
@@ -1401,7 +1411,7 @@ class ModelResult(Minimizer):
         self.ci_out = None
         self.userargs = (self.data, self.weights)
         self.userkws.update(kwargs)
-        self.init_fit = self.model.eval(params=self.params, **self.userkws)
+        self.init_fit = self.model.eval_init(params=self.params, **self.userkws)
         _ret = self.minimize(method=self.method)
 
         for attr in dir(_ret):
@@ -1413,7 +1423,7 @@ class ModelResult(Minimizer):
 
         self.init_values = self.model._make_all_args(self.init_params)
         self.best_values = self.model._make_all_args(_ret.params)
-        self.best_fit = self.model.eval(params=_ret.params, **self.userkws)
+        # self.best_fit = self.model.eval(params=_ret.params, **self.userkws)
 
     def eval(self, params=None, **kwargs):
         """Evaluate model function.
