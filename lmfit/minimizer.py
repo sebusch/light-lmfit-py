@@ -390,7 +390,7 @@ class Minimizer:
     _err_max_evals = ("Too many function calls (max set to {:i})! Use:"
                       " minimize(func, params, ..., max_nfev=NNN)"
                       " to increase this maximum.")
-    @profile
+    
     def __init__(self, userfcn, params, fcn_args=None, fcn_kws=None,
                  iter_cb=None, scale_covar=True, nan_policy='raise',
                  reduce_fcn=None, calc_covar=True, max_nfev=None, **kws):
@@ -672,7 +672,7 @@ class Minimizer:
             if isinstance(r, np.ndarray) and r.size > 1:
                 r = r.sum()
         return r
-    @profile
+    
     def prepare_fit(self, params=None):
         """Prepare parameters for fitting.
 
