@@ -743,7 +743,7 @@ class Model:
         raise NotImplementedError(msg)
 
 #    @profile
-    def _residual(self, params, data, weights, nfev=-1, **kwargs):
+    def _residual(self, params, data, weights, nfev, **kwargs):
         """Return the residual.
 
         Default residual: ``(data-model)*weights``.
@@ -764,6 +764,7 @@ class Model:
         """
         model = self.eval(params, **kwargs)
         if nfev < 0:
+            print("check nan_policy")
             if self.nan_policy == 'raise' and not np.all(np.isfinite(model)):
                 msg = ('The model function generated NaN values and the fit '
                     'aborted! Please check your model function and/or set '
@@ -773,17 +774,16 @@ class Model:
 
         diff = model - data
 
-        if nfev < 0:
-            if diff.dtype == complex:
-                # data/model are complex
-                diff = diff.ravel().view(float)
-                if weights is not None:
-                    if weights.dtype == complex:
-                        # weights are complex
-                        weights = weights.ravel().view(float)
-                    else:
-                        # real weights but complex data
-                        weights = (weights + 1j * weights).ravel().view(float)
+        if diff.dtype == complex:
+            # data/model are complex
+            diff = diff.ravel().view(float)
+            if weights is not None:
+                if weights.dtype == complex:
+                    # weights are complex
+                    weights = weights.ravel().view(float)
+                else:
+                    # real weights but complex data
+                    weights = (weights + 1j * weights).ravel().view(float)
         if weights is not None:
             diff *= weights
         return np.asarray(diff).ravel()  # for compatibility with pandas.Series
@@ -806,21 +806,21 @@ class Model:
         # 1. fill in in all parameter values
         for name, par in params.items():
             # print("make funcargs: ", par)
-            if self._prefix:
+            if strip and self._prefix:
                 name = self._strip_prefix(name)
 
             if name in self._func_allargs or self._func_haskeywords:
                 # out[name] = par.value
-                out[name] = par
+                out[name] = par.value
+                
         # 2. for each function argument, use 'prefix+varname' in params,
         # avoiding possible name collisions with unprefixed params
-        # if len(self._prefix) > 0:
-        #     for fullname in self._param_names:
-        #         print("fullname: ", fullname)
-        #         if fullname in params:
-        #             name = self._strip_prefix(fullname)
-        #             if name in self._func_allargs or self._func_haskeywords:
-        #                 out[name] = params[fullname].value
+        if len(self._prefix) > 0:
+            for fullname in self._param_names:
+                if fullname in params:
+                    name = self._strip_prefix(fullname)
+                    if name in self._func_allargs or self._func_haskeywords:
+                        out[name] = params[fullname].value
 
         # 3. kwargs handled slightly differently -- may set param value too!
         for name, val in kwargs.items():
@@ -838,6 +838,7 @@ class Model:
         """Generate **all** function args for all functions."""
         args = {}
         for key, val in self.make_funcargs(params, kwargs).items():
+            # print("enter here: ", key, val)
             args[f"{self._prefix}{key}"] = val
         return args
 
@@ -873,8 +874,9 @@ class Model:
         or `complex` value.
 
         """
-        _dic = self.make_funcargs(params, kwargs)
-        return self.func(**_dic)
+        # _dic = self.make_funcargs(params, kwargs)
+        # return self.func(**_dic)
+        return self.func(**self.make_funcargs(params, kwargs))
 
     @property
     def components(self):

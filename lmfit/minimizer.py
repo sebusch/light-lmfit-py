@@ -561,8 +561,8 @@ class Minimizer:
 
         """
         params = self.result.params
-        # _dict = {}
-        _dict = []
+       
+        _par_list = []
         # print("self params: ", self.params['g1_fwhm'].value)
         # print("result params: ", self.result.params['g1_fwhm'].value)
         if fvars.shape == ():
@@ -572,11 +572,13 @@ class Minimizer:
             for name, val in zip(self.result.var_names, fvars):
                 # params[name].value = params[name].from_internal(val)
                 # _dict[name] = params[name].from_internal(val)
-                _dict.append(params[name].from_internal(val))
+                _par_list.append(params[name].from_internal(val))
         else:
-            for name, val in zip(self.result.var_names, fvars):
-                # params[name].value = val
-                _dict.append(val)
+            _par_list = list(fvars)
+            # for name, val in zip(self.result.var_names, fvars):
+            #     # params[name].value = val
+            #     _par_list.append(val)
+        self.result._par_list = _par_list
         
         # params.update_constraints() # NOTE JHu: we don't need to call this at each iteration
 
@@ -596,7 +598,7 @@ class Minimizer:
         # print("created dict: ", _dict)
         # out = self.userfcn(params, *self.userargs, **self.userkws)
 
-        out = self.userfcn(_dict, *self.userargs, nfev, **self.userkws)
+        out = self.userfcn(_par_list, *self.userargs, nfev, **self.userkws)
  
         if callable(self.iter_cb):
             abort = self.iter_cb(params, self.result.nfev, out,
@@ -613,6 +615,9 @@ class Minimizer:
             if nfev < 0: #NOTE how frequently we should check nan_policy
                 out = _nan_policy(np.asarray(out).ravel(),
                                nan_policy=self.nan_policy)
+            # if nfev < 5:
+            #     print("out from minimizer.__residual: ", nfev, str(out))
+            # print("par_list: ", self.result._par_list)
             return out
 
     def __jacobian(self, fvars):
@@ -1699,6 +1704,7 @@ class Minimizer:
         orig_warn_settings = np.geterr()
         np.seterr(all='ignore')
         result.call_kws = lskws
+    
         try:
             lsout = scipy_leastsq(self.__residual, variables, **lskws)
         except AbortFitException:
@@ -1737,6 +1743,11 @@ class Minimizer:
             result.message = self._err_max_evals.format(lskws['maxfev'])
         else:
             result.message = 'Tolerance seems to be too small.'
+        
+        # update parameters
+        for name, val in zip(result.var_names, result._par_list):
+            result.params[name].value = val
+        result.params.update_constraints()
 
         # self.errorbars = error bars were successfully estimated
         result.errorbars = (_cov is not None)
