@@ -742,8 +742,7 @@ class Model:
         msg = f'guess() not implemented for {cname}'
         raise NotImplementedError(msg)
 
-#    @profile
-    def _residual(self, params, data, weights, nfev, **kwargs):
+    def _residual(self, params, data, weights, **kwargs):
         """Return the residual.
 
         Default residual: ``(data-model)*weights``.
@@ -763,8 +762,52 @@ class Model:
 
         """
         model = self.eval(params, **kwargs)
+        if self.nan_policy == 'raise' and not np.all(np.isfinite(model)):
+            msg = ('The model function generated NaN values and the fit '
+                   'aborted! Please check your model function and/or set '
+                   'boundaries on parameters where applicable. In cases like '
+                   'this, using "nan_policy=\'omit\'" will probably not work.')
+            raise ValueError(msg)
+
+        diff = model - data
+
+        if diff.dtype == complex:
+            # data/model are complex
+            diff = diff.ravel().view(float)
+            if weights is not None:
+                if weights.dtype == complex:
+                    # weights are complex
+                    weights = weights.ravel().view(float)
+                else:
+                    # real weights but complex data
+                    weights = (weights + 1j * weights).ravel().view(float)
+        if weights is not None:
+            diff *= weights
+        return np.asarray(diff).ravel()
+
+    def _residual_fast(self, nvars, data, weights, nfev, **kwargs):
+        """Return the residual for `fast_leastsq` method.
+
+        Default residual: ``(data-model)*weights``.
+
+        If the model returns complex values, the residual is computed by
+        treating the real and imaginary parts separately. In this case, if
+        the weights provided are real, they are assumed to apply equally
+        to the real and imaginary parts. If the weights are complex, the
+        real part of the weights are applied to the real part of the
+        residual and the imaginary part is treated correspondingly.
+
+        Since the underlying `scipy.optimize` routines expect
+        ``numpy.float`` arrays, the only complex type supported is
+        ``complex``.
+
+        The "ravels" throughout are necessary to support `pandas.Series`.
+
+        """
+        model = self.eval_fast(nvars, **kwargs)
+
+        # check for NaN at the first iteration
         if nfev < 0:
-            print("check nan_policy")
             if self.nan_policy == 'raise' and not np.all(np.isfinite(model)):
                 msg = ('The model function generated NaN values and the fit '
                     'aborted! Please check your model function and/or set '
@@ -907,7 +950,7 @@ class Model:
     
     def fit(self, data, params=None, weights=None, method='leastsq',
             iter_cb=None, scale_covar=True, verbose=False, fit_kws=None,
-            nan_policy=None, calc_covar=True, max_nfev=None, **kwargs):
+            nan_policy=None, calc_covar=True, max_nfev=None, fast=False, **kwargs):
         """Fit the model to the data using the supplied Parameters.
 
         Parameters
@@ -1057,7 +1100,7 @@ class Model:
         output = ModelResult(self, params, method=method, iter_cb=iter_cb,
                              scale_covar=scale_covar, fcn_kws=kwargs,
                              nan_policy=self.nan_policy, calc_covar=calc_covar,
-                             max_nfev=max_nfev, **fit_kws)
+                             max_nfev=max_nfev, fast=fast, **fit_kws)
         output.fit(data=data, weights=weights)
         output.components = self.components
         return output
@@ -1161,7 +1204,7 @@ class CompositeModel(Model):
                 f"{self._known_ops.get(self.op, self.op)} "
                 f"{self.right._reprstring(long=long)})")
 
-    def eval_init(self, params=None, **kwargs):
+    def eval(self, params=None, **kwargs):
         """Evaluate model function for composite model."""
         # print("composite eval: ", params)
         return self.op(self.left.eval(params=params, **kwargs),
@@ -1331,7 +1374,7 @@ class ModelResult(Minimizer):
     def __init__(self, model, params, data=None, weights=None,
                  method='leastsq', fcn_args=None, fcn_kws=None,
                  iter_cb=None, scale_covar=True, nan_policy='raise',
-                 calc_covar=True, max_nfev=None, **fit_kws):
+                 calc_covar=True, max_nfev=None, fast=True, **fit_kws):
         """
         Parameters
         ----------
@@ -1373,7 +1416,14 @@ class ModelResult(Minimizer):
         self.ci_out = None
         self.user_options = None
         self.init_params = deepcopy(params)
-        Minimizer.__init__(self, model._residual, params,
+        if fast:
+            Minimizer.__init__(self, model._residual_fast, params,
+                           fcn_args=fcn_args, fcn_kws=fcn_kws,
+                           iter_cb=iter_cb, nan_policy=nan_policy,
+                           scale_covar=scale_covar, calc_covar=calc_covar,
+                           max_nfev=max_nfev, **fit_kws)
+        else:
+            Minimizer.__init__(self, model._residual, params,
                            fcn_args=fcn_args, fcn_kws=fcn_kws,
                            iter_cb=iter_cb, nan_policy=nan_policy,
                            scale_covar=scale_covar, calc_covar=calc_covar,
