@@ -16,7 +16,8 @@ Here I list some main changes of this customized version of `lmfit`:
 
     	return height * np.exp(-((1.0 * x - center) ** 2) / max(tiny, (2 * sigma ** 2))) + c
 ```
-```
+
+    ```
 class Const_1GaussModel(lmfit.model.CompositeModel):
     def __init__(
         self, independent_vars=["x"], prefix="", nan_policy="raise", **kwargs  # noqa
@@ -39,7 +40,8 @@ class Const_1GaussModel(lmfit.model.CompositeModel):
      def eval_fast(self, nvars, **kwargs):
         return self.com_func(kwargs['x'], *nvars)
 ```
-where `gaussianCH` combines `GaussianModelH` and `ConstantModelH` model functions. In the current implementation, this is done manually. Ideally, we would like to automate this process, i.e. given any two model functions, we can generate the composite model function.
+
+	where `gaussianCH` combines `GaussianModelH` and `ConstantModelH` model functions. In the current implementation, this is done manually. Ideally, we would like to automate this process, i.e. given any two model functions, we can generate the composite model function.
 
 4. update `aic`, `bic` calculation (check `MinimizerResult._calculate_statistics`)
  - As suggested by the science team, the following method is used in this version:
