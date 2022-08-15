@@ -1463,56 +1463,7 @@ class ModelResult(Minimizer):
         self.ci_out = None
         self.userargs = (self.data, self.weights)
         self.userkws.update(kwargs)
-        # self.init_fit = self.model.eval_init(params=self.params, **self.userkws)
-        _ret = self.minimize(method=self.method)
-        
-        for attr in dir(_ret):
-            if not attr.startswith('_'):
-                try:
-                    setattr(self, attr, getattr(_ret, attr))
-                except AttributeError:
-                    pass
-
-        self.init_values = self.model._make_all_args(self.init_params)
-        self.best_values = self.model._make_all_args(_ret.params)
-        # self.best_fit = self.model.eval(params=_ret.params, **self.userkws)
-
-    #TODO: WRITE A SEPARATE FUNCTION FOR LLMFIT
-    def light_fit(self, data=None, params=None, weights=None, method=None,
-            nan_policy=None, **kwargs):
-        """Re-perform fit for a Model, given data and params.
-
-        Parameters
-        ----------
-        data : array_like, optional
-            Data to be modeled.
-        params : Parameters, optional
-            Parameters with initial values for model.
-        weights : array_like, optional
-            Weights to multiply ``(data-model)`` for fit residual.
-        method : str, optional
-            Name of minimization method to use (default is `'leastsq'`).
-        nan_policy : {'raise', 'propagate', 'omit'}, optional
-            What to do when encountering NaNs when fitting Model.
-        **kwargs : optional
-            Keyword arguments to send to minimization routine.
-
-        """
-        if data is not None:
-            self.data = data
-        if params is not None:
-            self.init_params = params
-        if weights is not None:
-            self.weights = weights
-        if method is not None:
-            self.method = method
-        if nan_policy is not None:
-            self.nan_policy = nan_policy
-
-        self.ci_out = None
-        self.userargs = (self.data, self.weights)
-        self.userkws.update(kwargs)
-        # self.init_fit = self.model.eval_init(params=self.params, **self.userkws)
+        # self.init_fit = self.model.eval(params=self.params, **self.userkws)
         _ret = self.minimize(method=self.method)
         
         for attr in dir(_ret):

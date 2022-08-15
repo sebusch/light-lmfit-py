@@ -400,7 +400,7 @@ class MinimizerResult:
         # _neg2_log_likel = self.ndata * np.log(self.chisqr / self.ndata)
         # self.aic = _neg2_log_likel + 2 * self.nvarys
         # self.bic = _neg2_log_likel + np.log(self.ndata) * self.nvarys
-        
+
         # add a different method to calculate aic, bic
         self.aic = self.chisqr + 2 * self.nvarys
         self.bic = self.chisqr + np.log(self.ndata) * self.nvarys
@@ -828,8 +828,7 @@ class Minimizer:
         if params is not None:
             self.params = params
         if isinstance(self.params, Parameters):
-            # result.params = deepcopy(self.params)
-            result.params = self.params
+            result.params = deepcopy(self.params)
         elif isinstance(self.params, (list, tuple)):
             result.params = Parameters()
             for par in self.params:
