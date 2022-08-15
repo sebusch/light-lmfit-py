@@ -38,7 +38,7 @@ class Const_1GaussModel(lmfit.model.CompositeModel):
         return self.com_func(kwargs['x'], *nvars)
 ```
 
-where `gaussianCH` combines `GaussianModelH` and `ConstantModelH` model functions. In the current implementation, this is done manually. Ideally, we would like to automate this process, i.e. given any two model functions, we can generate the composite model function.
+where `gaussianCH` combines `GaussianModelH` and `ConstantModelH` model functions, and `eval_fast` evaluate it. In the current implementation, this is done manually. Ideally, we would like to automate this process, i.e. given any two model functions, we can generate the composite model function.
 
 4. update `aic`, `bic` calculation (check `MinimizerResult._calculate_statistics`)
  - As suggested by the science team, the following method is used in this version:
