@@ -789,6 +789,37 @@ class Minimizer:
             if isinstance(r, np.ndarray) and r.size > 1:
                 r = r.sum()
         return r
+    
+    def penalty_fast(self, fvars):
+        """Penalty function for scalar minimizers.
+
+        Parameters
+        ----------
+        fvars : numpy.ndarray
+            Array of values for the variable parameters.
+
+        Returns
+        -------
+        r : float
+            The evaluated user-supplied objective function.
+
+            If the objective function is an array of size greater than 1,
+            use the scalar returned by `self.reduce_fcn`. This defaults to
+            sum-of-squares, but can be replaced by other options.
+
+        """
+        if self.result.method in ["brute", "shgo", "dual_annealing"]:
+            apply_bounds_transformation = False
+        else:
+            apply_bounds_transformation = True
+
+        r = self.__residual_fast(fvars, apply_bounds_transformation)
+        if isinstance(r, np.ndarray) and r.size > 1:
+            r = self.reduce_fcn(r)
+            if isinstance(r, np.ndarray) and r.size > 1:
+                r = r.sum()
+        return r
+
 
     def prepare_fit(self, params=None):
         """Prepare parameters for fitting.
@@ -2715,6 +2746,71 @@ class Minimizer:
                 self._calculate_uncertainties_correlations()
 
         return result
+    
+    def nelder_fast(self, params=None, max_nfev=None, **kws):
+        result = self.prepare_fit(params=params)
+        result.method = "Nelder-Mead"
+        variables = result.init_vals
+        params = result.params
+
+        self.set_max_nfev(max_nfev, 2000 * (result.nvarys + 1))
+
+        #TODO: INCLUDE OTHER OPTIONS FOR scipy.optimize.minimize(method=’Nelder-Mead’)
+        # https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html#scipy.optimize.minimize
+        # https://docs.scipy.org/doc/scipy/reference/optimize.minimize-neldermead.html
+        fmin_kws = dict(method="Nelder-Mead", options={"maxiter": 2 * self.max_nfev})
+        fmin_kws.update(self.kws)
+
+        if "maxiter" in kws:
+            warnings.warn(
+                maxeval_warning.format("maxiter", thisfuncname()),
+                RuntimeWarning,
+            )
+            kws.pop("maxiter")
+        fmin_kws.update(kws)
+        result.call_kws = fmin_kws
+
+        try:
+            ret = scipy_minimize(self.penalty_fast, variables, **fmin_kws)
+        except AbortFitException:
+            pass
+
+        if not result.aborted:
+            if isinstance(ret, dict):
+                for attr, value in ret.items():
+                    setattr(result, attr, value)
+            else:
+                for attr in dir(ret):
+                    if not attr.startswith("_"):
+                        setattr(result, attr, getattr(ret, attr))
+
+            result.x = np.atleast_1d(result.x)
+            result.residual = self.__residual(result.x)
+            result.nfev -= 1
+        else:
+            result.x = result.last_internal_values
+            self.result.nfev -= 2
+            self._abort = False
+            result.residual = self.__residual(result.x)
+            result.nfev += 1
+
+        result._calculate_statistics()
+
+        # calculate the cov_x and estimate uncertainties/correlations
+        if (
+            not result.aborted
+            and self.calc_covar
+            and HAS_NUMDIFFTOOLS
+            and len(result.residual) > len(result.var_names)
+        ):
+            _covar_ndt = self._calculate_covariance_matrix(result.x)
+            if _covar_ndt is not None:
+                result.covar = self._int2ext_cov_x(_covar_ndt, result.x)
+                self._calculate_uncertainties_correlations()
+
+            
+
+        return result
 
     def minimize(self, method="leastsq", params=None, **kws):
         """Perform the minimization.
@@ -2809,6 +2905,8 @@ class Minimizer:
             function = self.shgo
         elif user_method == "dual_annealing":
             function = self.dual_annealing
+        elif user_method == "nelder_fast":
+            function = self.fast_nelder
         else:
             function = self.scalar_minimize
             for key, val in SCALAR_METHODS.items():
