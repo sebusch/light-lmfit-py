@@ -2910,8 +2910,8 @@ class Minimizer:
             function = self.shgo
         elif user_method == "dual_annealing":
             function = self.dual_annealing
-        elif user_method == "nelder_fast":
-            function = self.fast_nelder
+        elif user_method == "fast_nelder":
+            function = self.nelder_fast
         else:
             function = self.scalar_minimize
             for key, val in SCALAR_METHODS.items():
