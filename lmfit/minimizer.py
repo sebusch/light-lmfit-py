@@ -2723,6 +2723,11 @@ class Minimizer:
             result.residual = self.__residual(result.x) #TODO: check whether we should change it to __residual_fast
             result.nfev += 1
 
+        # update params after finishing fitting
+        for name, val in zip(result.var_names, result._par_list):
+            result.params[name].value = val
+        result.params.update_constraints()
+        
         result._calculate_statistics()
 
         # calculate the cov_x and estimate uncertainties/correlations
