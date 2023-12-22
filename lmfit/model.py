@@ -1012,7 +1012,7 @@ class Model:
     def fit(self, data, params=None, weights=None, method='leastsq',
             iter_cb=None, scale_covar=True, verbose=False, fit_kws=None,
             nan_policy=None, calc_covar=True, max_nfev=None,
-            coerce_farray=True, fast=False, **kwargs):
+            coerce_farray=True, **kwargs):
         """Fit the model to the data using the supplied Parameters.
 
         Parameters
@@ -1148,6 +1148,12 @@ class Model:
 
         if fit_kws is None:
             fit_kws = {}
+
+        # determine the value of kwarg fast passed to ModelResult
+        if method.startswith("fast_"):
+            fast = True
+        else:
+            fast = False
 
         output = ModelResult(self, params, method=method, iter_cb=iter_cb,
                              scale_covar=scale_covar, fcn_kws=kwargs,
@@ -1435,7 +1441,7 @@ class ModelResult(Minimizer):
     def __init__(self, model, params, data=None, weights=None,
                  method='leastsq', fcn_args=None, fcn_kws=None,
                  iter_cb=None, scale_covar=True, nan_policy='raise',
-                 calc_covar=True, max_nfev=None, fast=True, **fit_kws):
+                 calc_covar=True, max_nfev=None, fast=False, **fit_kws):
         """
         Parameters
         ----------
@@ -1524,8 +1530,8 @@ class ModelResult(Minimizer):
         self.ci_out = None
         self.userargs = (self.data, self.weights)
         self.userkws.update(kwargs)
-        # self.init_fit = self.model.eval(params=self.params, **self.userkws)
-        _ret = self.minimize(method=self.method)
+        self.init_fit = self.model.eval(params=self.params, **self.userkws) #TODO: check whether we can comment out this line
+        _ret = self.minimize(method=self.method) #TODO: check whether all kwargs are set (e.g. via self.kws)
         self.model.post_fit(_ret)
         _ret.params.create_uvars(covar=_ret.covar)
 
@@ -1544,7 +1550,7 @@ class ModelResult(Minimizer):
 
         self.init_values = self.model._make_all_args(self.init_params)
         self.best_values = self.model._make_all_args(_ret.params)
-        # self.best_fit = self.model.eval(params=_ret.params, **self.userkws)
+        self.best_fit = self.model.eval(params=_ret.params, **self.userkws) #TODO: check whether we can comment out this line
 
     def eval(self, params=None, **kwargs):
         """Evaluate model function.
