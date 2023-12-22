@@ -1012,7 +1012,7 @@ class Model:
     def fit(self, data, params=None, weights=None, method='leastsq',
             iter_cb=None, scale_covar=True, verbose=False, fit_kws=None,
             nan_policy=None, calc_covar=True, max_nfev=None,
-            coerce_farray=True, **kwargs):
+            coerce_farray=True, fast=False, **kwargs):
         """Fit the model to the data using the supplied Parameters.
 
         Parameters
