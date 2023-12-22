@@ -607,7 +607,7 @@ class Minimizer:
 
         """
         params = self.result.params
-
+    
         if fvars.shape == ():
             fvars = fvars.reshape((1,))
 
@@ -617,7 +617,7 @@ class Minimizer:
         else:
             for name, val in zip(self.result.var_names, fvars):
                 params[name].value = val
-        params.update_constraints()
+        # params.update_constraints()
 
         if self.max_nfev is None:
             self.max_nfev = 200000 * (len(fvars) + 1)
@@ -650,9 +650,16 @@ class Minimizer:
             self.result.success = False
             raise AbortFitException("fit aborted by user.")
         else:
-            return _nan_policy(
-                np.asarray(out).ravel(), nan_policy=self.nan_policy
-            )
+            # return _nan_policy(
+            #     np.asarray(out).ravel(), nan_policy=self.nan_policy
+            # )
+            # check nan at the first iteration
+            if self.result.nfev < 2:  
+                # print("init")
+                out = _nan_policy(
+                    np.asarray(out).ravel(), nan_policy=self.nan_policy
+                )
+            return out
 
     def __residual_fast(self, fvars, apply_bounds_transformation=True):
         """Residual function used for leastsq_fast fit.
@@ -1953,16 +1960,18 @@ class Minimizer:
             lsout = scipy_leastsq(self.__residual, variables, **lskws)
         except AbortFitException:
             pass
-
+        
         if not result.aborted:
             _best, _cov, _infodict, errmsg, ier = lsout
+        
         else:
             _best = result.last_internal_values
             _cov = None
             ier = -1
             errmsg = 'Fit aborted.'
-
+        
         result.nfev -= 1
+        print("nfev: ", result.nfev)
         if result.nfev >= self.max_nfev:
             result.nfev = self.max_nfev - 1
         self.result.nfev = result.nfev
@@ -2771,10 +2780,11 @@ class Minimizer:
         result.call_kws = fmin_kws
 
         try:
-            ret = scipy_minimize(self.penalty_fast, variables, **fmin_kws)
+            # ret = scipy_minimize(self.penalty_fast, variables, **fmin_kws)
+            ret = scipy_minimize(self.penalty, variables, **fmin_kws)  # temp; for testing purpose
         except AbortFitException:
             pass
-
+        print("nit: ", ret.nit)
         if not result.aborted:
             if isinstance(ret, dict):
                 for attr, value in ret.items():
