@@ -58,6 +58,7 @@ definition of the model function:
 
     from numpy import exp, linspace, random
 
+
     def gaussian(x, amp, cen, wid):
         return amp * exp(-(x-cen)**2 / wid)
 
@@ -107,12 +108,13 @@ assignment of independent variable / arguments and specify yourself what
 the independent variable is and which function arguments should be identified
 as parameter names.
 
-The Parameters are *not* created when the model is created. The model knows
-what the parameters should be named, but nothing about the scale and
-range of your data. You will normally have to make these parameters and
-assign initial values and other attributes. To help you do this, each
-model has a :meth:`make_params` method that will generate parameters with
-the expected names:
+:class:`~lmfit.parameter.Parameters` are *not* created when the model is
+created. The model knows what the parameters should be named, but nothing about
+the scale and range of your data. To help you create Parameters for a Model,
+each model has a :meth:`make_params` method that will generate parameters with
+the expected names. You will have to do this, or make Parameters some other way
+(say, with :func:`~lmfit.parameter.create_params`), and assign initial values
+for all Parameters. You can also assign other attributes when doing this:
 
 .. jupyter-execute::
 
@@ -120,8 +122,9 @@ the expected names:
 
 This creates the :class:`~lmfit.parameter.Parameters` but does not
 automatically give them initial values since it has no idea what the scale
-should be. You can set initial values for parameters with keyword
-arguments to :meth:`make_params`:
+should be. If left unspecified, the initial values will be ``-Inf``, which will
+generally fail to give useful results. You can set initial values for
+parameters with keyword arguments to :meth:`make_params`:
 
 .. jupyter-execute::
 
@@ -231,13 +234,17 @@ function as a fitting model.
 
 .. automethod:: Model.make_params
 
-
 .. automethod:: Model.set_param_hint
 
    See :ref:`model_param_hints_section`.
 
-
 .. automethod:: Model.print_param_hints
+
+   See :ref:`model_param_hints_section`.
+
+..  automethod:: Model.post_fit
+
+   See :ref:`modelresult_uvars_postfit_section`.
 
 
 :class:`Model` class Attributes
@@ -294,10 +301,9 @@ function as a fitting model.
 Determining parameter names and independent variables for a function
 --------------------------------------------------------------------
 
-The :class:`Model` created from the supplied function ``func`` will create
-a :class:`~lmfit.parameter.Parameters` object, and names are inferred from the function
-arguments, and a residual function is automatically constructed.
-
+The :class:`Model` created from the supplied function ``func`` will create a
+:class:`~lmfit.parameter.Parameters` object, and names are inferred from the
+function` arguments, and a residual function is automatically constructed.
 
 By default, the independent variable is taken as the first argument to the
 function. You can, of course, explicitly set this, and will need to do so
@@ -378,11 +384,12 @@ Parameters if the supplied default value was a valid number (but not
 .. jupyter-execute::
 
     def decay2(t, tau, N=10, check_positive=False):
-        if check_small:
+        if check_positive:
             arg = abs(t)/max(1.e-9, abs(tau))
         else:
             arg = t/tau
         return N*np.exp(arg)
+
 
     mod = Model(decay2)
     params = mod.make_params()
@@ -428,23 +435,29 @@ You would refer to these parameters as ``f1_amplitude`` and so forth, and
 the model will know to map these to the ``amplitude`` argument of ``myfunc``.
 
 
-Initializing model parameters
------------------------------
+Initializing model parameter values
+-----------------------------------
 
-As mentioned above, the parameters created by :meth:`Model.make_params` are
-generally created with invalid initial values of ``None``. These values
-**must** be initialized in order for the model to be evaluated or used in a
-fit. There are four different ways to do this initialization that can be
-used in any combination:
+As mentioned above, creating a model does not automatically create the
+corresponding :class:`~lmfit.parameter.Parameters`. These can be created with
+either the :func:`create_params` function, or the :meth:`Model.make_params`
+method of the corresponding instance of :class:`Model`.
+
+When creating Parameters, each parameter is created with invalid initial value
+of ``-Inf`` if it is not set explicitly. That is to say, parameter values
+**must** be initialized in order for the model to evaluate a finite result or
+used in a fit. There are a few different ways to do this:
 
   1. You can supply initial values in the definition of the model function.
   2. You can initialize the parameters when creating parameters with :meth:`Model.make_params`.
-  3. You can give parameter hints with :meth:`Model.set_param_hint`.
-  4. You can supply initial values for the parameters when you use the
+  3. You can create a Parameters object with :class:`Parameters` or :func:`create_params`.
+  4. You can supply initial values for the parameters when calling
      :meth:`Model.eval` or :meth:`Model.fit` methods.
 
-Of course these methods can be mixed, allowing you to overwrite initial
-values at any point in the process of defining and using the model.
+Generally, using the :meth:`Model.make_params` method is recommended. The methods
+described above can be mixed, allowing you to overwrite initial values at any point
+in the process of defining and using the model.
+
 
 Initializing values in the function definition
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -473,38 +486,50 @@ Initializing values with :meth:`Model.make_params`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 When creating parameters with :meth:`Model.make_params` you can specify initial
-values. To do this, use keyword arguments for the parameter names and
-initial values:
+values. To do this, use keyword arguments for the parameter names. You can
+either set initial values as numbers (floats or ints) or as dictionaries with
+keywords of (``value``, ``vary``, ``min``, ``max``, ``expr``, ``brute_step``,
+and ``is_init_value``) to specify these parameter attributes.
 
 .. jupyter-execute::
 
     mod = Model(myfunc)
+
+    # simply supply initial values
     pars = mod.make_params(a=3, b=0.5)
 
+    # supply initial values, attributes for bounds, etcetera:
+    pars_bounded = mod.make_params(a=dict(value=3, min=0),
+                                   b=dict(value=0.5, vary=False))
 
-Initializing values by setting parameter hints
+
+Creating a :class:`Parameters` object directly
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-After a model has been created, but prior to creating parameters with
-:meth:`Model.make_params`, you can set parameter hints. These allows you to set
-not only a default initial value but also to set other parameter attributes
-controlling bounds, whether it is varied in the fit, or a constraint
-expression. To set a parameter hint, you can use :meth:`Model.set_param_hint`,
-as with:
+You can also create your own Parameters directly using :func:`create_params`.
+This is independent of using the :class:`Model` class, but is essentially
+equivalent to :meth:`Model.make_params` except with less checking of errors for
+model prefixes and so on.
 
 .. jupyter-execute::
 
+    from lmfit import create_params
+
     mod = Model(myfunc)
-    mod.set_param_hint('a', value=1.0)
-    mod.set_param_hint('b', value=0.3, min=0, max=1.0)
-    pars = mod.make_params()
 
-Parameter hints are discussed in more detail in section
-:ref:`model_param_hints_section`.
+    # simply supply initial values
+    pars = create_params(a=3, b=0.5)
+
+    # supply initial values and attributes for bounds, etc:
+    pars_bounded = create_params(a=dict(value=3, min=0),
+                                 b=dict(value=0.5, vary=False))
+
+Because less error checking is done, :meth:`Model.make_params` should probably
+be preferred when using Models.
 
 
-Initializing values when using a model
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Initializing parameter values for a model with keyword arguments
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Finally, you can explicitly supply initial values when using a model. That
 is, as with :meth:`Model.make_params`, you can include values as keyword
@@ -527,18 +552,27 @@ can set parameter hints but then change the initial value explicitly with
 Using parameter hints
 ---------------------
 
-After a model has been created, you can give it hints for how to create
-parameters with :meth:`Model.make_params`.  This allows you to set not only a
-default initial value but also to set other parameter attributes
-controlling bounds, whether it is varied in the fit, or a constraint
-expression. To set a parameter hint, you can use :meth:`Model.set_param_hint`,
+After a model has been created, but prior to creating parameters with
+:meth:`Model.make_params`, you can define parameter hints for that model. This
+allows you to set other parameter attributes for bounds, whether it is varied in
+the fit, or set a default constraint expression for a parameter. You can also
+set the initial value, but that is not really the intention of the method,
+which is to really to let you say that about the idealized Model, for example
+that some values may not make sense for some parameters, or that some parameters
+might be a small change from another parameter and so be fixed or constrained
+by default.
+
+To set a parameter hint, you can use :meth:`Model.set_param_hint`,
 as with:
 
 .. jupyter-execute::
 
     mod = Model(myfunc)
-    mod.set_param_hint('a', value=1.0)
-    mod.set_param_hint('b', value=0.3, min=0, max=1.0)
+    mod.set_param_hint('bounded_parameter', min=0, max=1.0)
+    pars = mod.make_params()
+
+Parameter hints are discussed in more detail in section
+:ref:`model_param_hints_section`.
 
 Parameter hints are stored in a model's :attr:`param_hints` attribute,
 which is simply a nested dictionary:
@@ -549,27 +583,92 @@ which is simply a nested dictionary:
     for pname, par in mod.param_hints.items():
         print(pname, par)
 
-You can change this dictionary directly, or with the :meth:`Model.set_param_hint`
+You can change this dictionary directly or use the :meth:`Model.set_param_hint`
 method. Either way, these parameter hints are used by :meth:`Model.make_params`
 when making parameters.
 
-An important feature of parameter hints is that you can force the creation
-of new parameters with parameter hints. This can be useful to make derived
-parameters with constraint expressions. For example to get the full-width
-at half maximum of a Gaussian model, one could use a parameter hint of:
+Parameter hints also allow you to create new parameters. This can be useful to
+make derived parameters with constraint expressions. For example to get the
+full-width at half maximum of a Gaussian model, one could use a parameter hint
+of:
 
 .. jupyter-execute::
 
     mod = Model(gaussian)
-    mod.set_param_hint('fwhm', expr='2.3548*sigma')
+    mod.set_param_hint('wid', min=0)
+    mod.set_param_hint('fwhm', expr='2.3548*wid')
+    params = mod.make_params(amp={'value': 10, 'min':0.1, 'max':2000},
+                             cen=5.5, wid=1.25)
+    params.pretty_print()
 
+With that definition, the value (and uncertainty) of the ``fwhm`` parameter
+will be reported in the output of any fit done with that model.
+
+.. _model_data_coercion_section:
+
+Data Types for data  and independent data with ``Model``
+-------------------------------------------------------------
+
+The model as defined by your model function will use the independent
+variable(s) you specify to best match the data you provide.  The model is meant
+to be an abstract representation for data, but when you do a fit with
+:meth:`Model.fit`, you really need to pass in values for the data to be modeled
+and the independent data used to calculate that data.
+
+
+As discussed in :ref:`fit-data-label`, the mathematical solvers used by
+``lmfit`` all work exclusively with 1-dimensional numpy arrays of datatype
+(dtype) "float64".  The value of the calculation ``(model-data)*weights`` using
+the calculation of your model function, and the data and weights you pass in
+**will always be coerced** to an 1-dimensional ndarray with dtype "float64"
+when it is passed to the solver.  If it cannot be coerced, an error will occur
+and the fit will be aborted.
+
+That coercion will usually work for "array like" data that is not already a
+float64 ndarray.  But, depending on the model function, the calculations within
+the model function may not always work well for some "array like" data types
+- especially independent data that are in list of numbers and ndarrays of type
+"float32" or "int16" or less precision.
+
+
+To be clear, independent data for models using ``Model`` are meant to be truly
+independent, and not **not** required to be strictly numerical or objects that
+are easily converted to arrays of numbers.  The could, for example, be a
+dictionary, an instance of a user-defined class, or other type of structured
+data.  You can use independent data any way you want in your model function.
+But, as with almost all the examples given here, independent data is often also
+a 1-dimensional array of values, say ``x``, and a simple view of the fit would
+be to plot the data as ``y`` as a function of ``x``.  Again, this is not
+required, but it is very common, especially for novice users.
+
+By default, all data and independent data passed to :meth:`Model.fit` that is
+"array like" - a list or tuple of numbers, a ``pandas.Series``, and
+``h5py.Dataset``, or any object that has an ``__array__()`` method -- will be
+converted to a "float64" ndarray before the fit begins.  If the array-like data
+is complex, it will be converted to a "complex128" ndarray, which will always
+work too.  This conversion before the fit begins ensures that the model
+function sees only "float64 ndarrays", and nearly guarantees that data type
+conversion will not cause problems for the fit.  But it also means that if you
+have passed a ``pandas.Series`` as data or independent data, not all of the
+methods or attributes of that ``Series`` will be available by default within
+the model function.
+
+.. versionadded:: 1.2.2
+
+This coercion can be turned of with the ``coerce_farray`` option to
+:meth:`Model.fit`.  When set to ``False``, neither the data nor the independent
+data will be coerced from their original data type, and the user will be
+responsible to arrange for the calculation and return value from the model
+function to be allow a proper and accurate conversion to a "float64" ndarray.
+
+See also :ref:`fit-data-label` for general advise and recommendations on
+types of data to use when fitting data.
 
 .. _model_saveload_sec:
 
 Saving and Loading Models
 -------------------------
 
-.. versionadded:: 0.9.8
 
 It is sometimes desirable to save a :class:`Model` for later use outside of
 the code used to define the model. Lmfit provides a :func:`save_model`
@@ -589,15 +688,22 @@ emphasized that if you are willing to save or reuse the definition of the
 model function as Python code, then saving the Parameters and rest of the
 components that make up a model presents no problem.
 
-If the ``dill`` package is installed, the model function will be saved using
-it. But because saving the model function is not always reliable, saving a
-model will always save the *name* of the model function. The :func:`load_model`
-takes an optional :attr:`funcdefs` argument that can contain a dictionary of
-function definitions with the function names as keys and function objects as
-values. If one of the dictionary keys matches the saved name, the
-corresponding function object will be used as the model function. With this
-approach, if you save a model and can provide the code used for the model
-function, the model can be saved and reliably reloaded and used.
+If the ``dill`` package is installed, the model function will also be saved
+using it. But because saving the model function is not always reliable,
+saving a model will always save the *name* of the model function. The
+:func:`load_model` takes an optional :attr:`funcdefs` argument that can
+contain a dictionary of function definitions with the function names as
+keys and function objects as values. If one of the dictionary keys matches
+the saved name, the corresponding function object will be used as the model
+function. If it is not found by name, and if ``dill`` was used to save
+the model, and if ``dill`` is available at run-time, the ``dill``-encoded
+function will try to be used.  Note that this approach will generally allow
+you to save a model that can be used by another installation of the
+same version of Python, but may not work across Python versions.  For preserving
+fits for extended periods of time (say, archiving for documentation of
+scientific results), we strongly encourage you to save the full Python code
+used for the model function and fit process.
+
 
 .. autofunction:: save_model
 
@@ -655,6 +761,8 @@ and ``bic``.
 
 .. automethod:: ModelResult.fit_report
 
+.. automethod:: ModelResult.summary
+
 .. automethod:: ModelResult.conf_interval
 
 .. automethod:: ModelResult.ci_report
@@ -668,67 +776,7 @@ and ``bic``.
 .. automethod:: ModelResult.plot_residuals
 
 
-:class:`ModelResult` attributes
--------------------------------
-
-.. attribute:: aic
-
-   Floating point best-fit Akaike Information Criterion statistic
-   (see :ref:`fit-results-label`).
-
-.. attribute:: best_fit
-
-   numpy.ndarray result of model function, evaluated at provided
-   independent variables and with best-fit parameters.
-
-.. attribute:: best_values
-
-   Dictionary with parameter names as keys, and best-fit values as values.
-
-.. attribute:: bic
-
-   Floating point best-fit Bayesian Information Criterion statistic
-   (see :ref:`fit-results-label`).
-
-.. attribute:: chisqr
-
-   Floating point best-fit chi-square statistic (see :ref:`fit-results-label`).
-
-.. attribute:: ci_out
-
-   Confidence interval data (see :ref:`confidence_chapter`) or ``None`` if
-   the confidence intervals have not been calculated.
-
-.. attribute:: covar
-
-   numpy.ndarray (square) covariance matrix returned from fit.
-
-.. attribute:: data
-
-   numpy.ndarray of data to compare to model.
-
-.. attribute:: errorbars
-
-   Boolean for whether error bars were estimated by fit.
-
-.. attribute::  ier
-
-   Integer returned code from :scipydoc:`optimize.leastsq`.
-
-.. attribute:: init_fit
-
-   numpy.ndarray result of model function, evaluated at provided
-   independent variables and with initial parameters.
-
-.. attribute:: init_params
-
-   Initial parameters.
-
-.. attribute:: init_values
-
-   Dictionary with parameter names as keys, and initial values as values.
-
-.. attribute:: iter_cb
+.. method:: ModelResult.iter_cb
 
    Optional callable function, to be called at each fit iteration. This
    must take take arguments of ``(params, iter, resid, *args, **kws)``, where
@@ -736,9 +784,120 @@ and ``bic``.
    iteration, ``resid`` the current residual array, and ``*args`` and
    ``**kws`` as passed to the objective function. See :ref:`fit-itercb-label`.
 
-.. attribute:: jacfcn
+.. method:: ModelResult.jacfcn
 
    Optional callable function, to be called to calculate Jacobian array.
+
+
+:class:`ModelResult` attributes
+-------------------------------
+
+A :class:`ModelResult` will take all of the attributes of
+:class:`MinimizerResult`, and several more. Here, we arrange them into
+categories.
+
+
+Parameters and Variables
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. attribute:: best_values
+
+   Dictionary with parameter names as keys, and best-fit values as values.
+
+.. attribute:: init_params
+
+   Initial parameters, as passed to :meth:`Model.fit`.
+
+.. attribute:: init_values
+
+   Dictionary with parameter names as keys, and initial values as values.
+
+.. attribute:: init_vals
+
+   list of values for the variable parameters.
+
+.. attribute::  params
+
+   Parameters used in fit; will contain the best-fit values.
+
+.. attribute:: uvars
+
+   Dictionary of ``uncertainties`` ufloats from Parameters.
+
+.. attribute::   var_names
+
+   List of variable Parameter names used in optimization in the
+   same order as the values in :attr:`init_vals` and :attr:`covar`.
+
+Fit Arrays and Model
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. attribute:: best_fit
+
+   numpy.ndarray result of model function, evaluated at provided
+   independent variables and with best-fit parameters.
+
+
+.. attribute:: covar
+
+   numpy.ndarray (square) covariance matrix returned from fit.
+
+
+.. attribute:: data
+
+   numpy.ndarray of data to compare to model.
+
+.. attribute:: dely
+
+   numpy.ndarray of estimated uncertainties in the ``y`` values of the model
+   from :meth:`ModelResult.eval_uncertainty`  (see :ref:`eval_uncertainty_sec`).
+
+.. attribute:: dely_comps
+
+   a dictionary of estimated uncertainties in the ``y`` values of the model
+   components, from :meth:`ModelResult.eval_uncertainty` (see
+   :ref:`eval_uncertainty_sec`).
+
+.. attribute:: init_fit
+
+   numpy.ndarray result of model function, evaluated at provided
+   independent variables and with initial parameters.
+
+.. attribute::  residual
+
+   numpy.ndarray for residual.
+
+.. attribute:: weights
+
+   numpy.ndarray (or ``None``) of weighting values to be used in fit. If not
+   ``None``, it will be used as a multiplicative factor of the residual
+   array, so that ``weights*(data - fit)`` is minimized in the
+   least-squares sense.
+
+.. attribute:: components
+
+   List of components of the :class:`Model`.
+
+
+
+Fit Status
+~~~~~~~~~~~~~~~~~~~
+
+.. attribute:: aborted
+
+   Whether the fit was aborted.
+
+.. attribute:: errorbars
+
+   Boolean for whether error bars were estimated by fit.
+
+.. attribute:: flatchain
+
+   A ``pandas.DataFrame`` view of the sampling chain if the ``emcee`` method is uses.
+
+.. attribute::  ier
+
+   Integer returned code from :scipydoc:`optimize.leastsq`.
 
 .. attribute::  lmdif_message
 
@@ -761,6 +920,43 @@ and ``bic``.
 
    Instance of :class:`Model` used for model.
 
+.. attribute::  scale_covar
+
+   Boolean flag for whether to automatically scale covariance matrix.
+
+
+.. attribute:: userargs
+
+   positional arguments passed to :meth:`Model.fit`, a tuple of (``y``, ``weights``)
+
+.. attribute:: userkws
+
+   keyword arguments passed to :meth:`Model.fit`, a dict, which will have independent data arrays such as ``x``.
+
+
+
+Fit Statistics
+~~~~~~~~~~~~~~~~~~~
+
+.. attribute:: aic
+
+   Floating point best-fit Akaike Information Criterion statistic
+   (see :ref:`fit-results-label`).
+
+.. attribute:: bic
+
+   Floating point best-fit Bayesian Information Criterion statistic
+   (see :ref:`fit-results-label`).
+
+.. attribute:: chisqr
+
+   Floating point best-fit chi-square statistic (see :ref:`fit-results-label`).
+
+.. attribute:: ci_out
+
+   Confidence interval data (see :ref:`confidence_chapter`) or ``None`` if
+   the confidence intervals have not been calculated.
+
 .. attribute::  ndata
 
    Integer number of data points.
@@ -777,32 +973,30 @@ and ``bic``.
 
    Integer number of independent, freely varying variables in fit.
 
-.. attribute::  params
-
-   Parameters used in fit; will contain the best-fit values.
 
 .. attribute::  redchi
 
    Floating point reduced chi-square statistic (see :ref:`fit-results-label`).
 
-.. attribute::  residual
+.. attribute:: rsquared
 
-   numpy.ndarray for residual.
+   Floating point :math:`R^2` statistic, defined for data :math:`y` and best-fit model :math:`f` as
 
-.. attribute::  scale_covar
+.. math::
+   :nowrap:
 
-   Boolean flag for whether to automatically scale covariance matrix.
+   \begin{eqnarray*}
+     R^2 &=&  1 - \frac{\sum_i (y_i - f_i)^2}{\sum_i (y_i - \bar{y})^2}
+    \end{eqnarray*}
 
 .. attribute:: success
 
-   Boolean value of whether fit succeeded.
+   Boolean value of whether fit succeeded. This is an optimistic
+   view of success, meaning that the method finished without error.
 
-.. attribute:: weights
 
-   numpy.ndarray (or ``None``) of weighting values to be used in fit. If not
-   ``None``, it will be used as a multiplicative factor of the residual
-   array, so that ``weights*(data - fit)`` is minimized in the
-   least-squares sense.
+
+.. _eval_uncertainty_sec:
 
 Calculating uncertainties in the model function
 -----------------------------------------------
@@ -843,12 +1037,73 @@ figure below.
     plt.show()
 
 
+.. versionadded:: 1.0.4
+
+If the model is a composite built from multiple components, the
+:meth:`ModelResult.eval_uncertainty` method will evaluate the uncertainty of
+both the full model (often the sum of multiple components) as well as the
+uncertainty in each component.  The uncertainty of the full model will be held in
+``result.dely``, and the uncertainties for each component will be held in the dictionary
+``result.dely_comps``, with keys that are the component prefixes.
+
+An example script shows how the uncertainties in components of a composite
+model can be calculated and used:
+
+.. jupyter-execute:: ../examples/doc_model_uncertainty2.py
+
+
+
+.. _modelresult_uvars_postfit_section:
+
+Using uncertainties in the fitted parameters for post-fit calculations
+--------------------------------------------------------------------------
+
+.. versionadded:: 1.2.2
+
+.. _uncertainties package:   https://pythonhosted.org/uncertainties/
+
+As with the previous section, after a fit is complete, you may want to do some
+further calculations with the resulting Parameter values.  Since these
+Parameters will have not only best-fit values but also usually have
+uncertainties, it is desirable for subsequent calculations to be able to
+propagate those uncertainties to any resulting calculated value.  In addition,
+it is common for Parameters to have finite - and sometimes large -
+correlations which should be taken into account in such calculations.
+
+The :attr:`ModelResult.uvars` will be a dictionary with keys for all variable
+Parameters and values that are ``uvalues`` from the `uncertainties package`_.
+When used in mathematical calculations with basic Python operators or numpy
+functions, these ``uvalues`` will automatically propagate their uncertainties
+to the resulting calculation, and taking into account the full covariance
+matrix describing the correlation between values.
+
+This readily allows "derived Parameters" to be evaluated just after the fit.
+In fact, it might be useful to have a Model always do such a calculation just
+after the fit.  The :meth:`Model.post_fit` method allows exactly that: you can
+overwrite this otherwise empty method for any Model.  It takes one argument:
+the :class:`ModelResult` instance just after the actual fit has run (and before
+:meth:`Model.fit` returns) and can be used to add Parameters or do other
+post-fit processing.
+
+The following example script shows two different methods for calculating a centroid
+value for two peaks, either by doing the calculation directly after the fit
+with the ``result.uvars`` or by capturing this in a :meth:`Model.post_fit`
+method that would be run for all instances of that model.  It also demonstrates
+that taking correlations between Parameters into account when performing
+calculations can have a noticeable influence on the resulting uncertainties.
+
+
+.. jupyter-execute:: ../examples/doc_uvars_params.py
+
+
+Note that the :meth:`Model.post_fit` does not need to be limited to this
+use case of adding derived Parameters.
+
+
 .. _modelresult_saveload_sec:
 
 Saving and Loading ModelResults
 -------------------------------
-
-.. versionadded:: 0.9.8
 
 As with saving models (see section :ref:`model_saveload_sec`), it is
 sometimes desirable to save a :class:`ModelResult`, either for later use or

@@ -3,7 +3,7 @@
 from warnings import warn
 
 import numpy as np
-from scipy.optimize import brentq
+from scipy.optimize import root_scalar
 from scipy.special import erf
 from scipy.stats import f
 
@@ -233,14 +233,20 @@ class ConfidenceInterval:
             para = self.params[para]
 
         # function used to calculate the probability
-        calc_prob = lambda val, prob: self.calc_prob(para, val, prob)
+        cache = {}
+
+        def calc_prob(val, target_prob):
+            if val not in cache:
+                cache[val] = self.calc_prob(para, val, 0)
+            return cache[val] - target_prob
+
         if self.trace:
             x = [i.value for i in self.params.values()]
             self.trace_dict[para.name].append(x + [0])
 
         para.vary = False
         limit, max_prob = self.find_limit(para, direction)
-        start_val = a_limit = float(para.value)
+        a_limit = float(para.value)
         ret = []
         orig_warn_settings = np.geterr()
         np.seterr(all='ignore')
@@ -249,17 +255,12 @@ class ConfidenceInterval:
                 ret.append((prob, direction*np.inf))
                 continue
 
-            try:
-                val = brentq(calc_prob, a_limit,
-                             limit, rtol=.5e-4, args=prob)
-            except ValueError:
-                self.reset_vals()
-                try:
-                    val = brentq(calc_prob, start_val,
-                                 limit, rtol=.5e-4, args=prob)
-                except ValueError:
-                    val = np.nan
-
+            sol = root_scalar(calc_prob, method='toms748', bracket=sorted([limit, a_limit]), rtol=.5e-4, args=(prob,))
+            if sol.converged:
+                val = sol.root
+            else:
+                val = np.nan
+                break
             a_limit = val
             ret.append((prob, val))
 
@@ -293,7 +294,7 @@ class ConfidenceInterval:
         max_prob = max(self.probs)
 
         while old_prob < max_prob:
-            i = i + 1
+            i += 1
             limit += step * direction
             if limit > para.max:
                 limit = para.max
@@ -310,12 +311,11 @@ class ConfidenceInterval:
                       f'max. prob={max_prob}')
 
             # check for convergence
-            if bound_reached:
-                if new_prob < max(self.probs):
-                    errmsg = (f'Bound reached with prob({para.name}={limit}) '
-                              f'= {new_prob} < max(sigmas)')
-                    warn(errmsg)
-                    break
+            if bound_reached and new_prob < max(self.probs):
+                errmsg = (f'Bound reached with prob({para.name}={limit}) '
+                          f'= {new_prob} < max(sigmas)')
+                warn(errmsg)
+                break
 
             if i > self.maxiter:
                 errmsg = (f'maxiter={self.maxiter} reached and prob('
@@ -353,7 +353,7 @@ class ConfidenceInterval:
 
 
 def conf_interval2d(minimizer, result, x_name, y_name, nx=10, ny=10,
-                    limits=None, prob_func=None):
+                    limits=None, prob_func=None, nsigma=5, chi2_out=False):
     r"""Calculate confidence regions for two fixed parameters.
 
     The method itself is explained in `conf_interval`: here we are fixing
@@ -370,16 +370,18 @@ def conf_interval2d(minimizer, result, x_name, y_name, nx=10, ny=10,
     y_name : str
         The name of the parameter which will be the y direction.
     nx : int, optional
-        Number of points in the x direction.
+        Number of points in the x direction (default is 10).
     ny : int, optional
-        Number of points in the y direction.
+        Number of points in the y direction (default is 10).
     limits : tuple, optional
         Should have the form ``((x_upper, x_lower), (y_upper, y_lower))``.
-        If not given, the default is 5.0*std-errors in each direction.
-    prob_func : None or callable, optional
-        Function to calculate the probability from the optimized chi-square.
-        Default is None and uses the built-in function `f_compare`
-        (i.e., F-test).
+        If not given, the default is nsigma*stderr in each direction.
+    prob_func : None or callable, deprecated
+        Starting with version 1.2, this argument is unused and has no effect.
+    nsigma : float or int, optional
+        Multiplier of stderr for limits (default is 5).
+    chi2_out: bool
+        Whether to return chi-square at each coordinate instead of probability.
 
     Returns
     -------
@@ -388,8 +390,8 @@ def conf_interval2d(minimizer, result, x_name, y_name, nx=10, ny=10,
     y : numpy.ndarray
         Y-coordinates (same shape as `ny`).
     grid : numpy.ndarray
-        Grid containing the calculated probabilities (with shape
-        ``(nx, ny)``).
+        2-D array (with shape ``(nx, ny)``) containing the calculated
+        probabilities or chi-square.
 
     See Also
     --------
@@ -403,20 +405,22 @@ def conf_interval2d(minimizer, result, x_name, y_name, nx=10, ny=10,
     >>> plt.contour(x,y,gr)
 
     """
+    if prob_func is not None:
+        msg = "'prob_func' has no effect and will be removed in version 1.4."
+        raise DeprecationWarning(msg)
+
     params = result.params
 
-    best_chi = result.chisqr
+    best_chisqr = result.chisqr
+    redchi = result.redchi
     org = copy_vals(result.params)
-
-    if prob_func is None:
-        prob_func = f_compare
 
     x = params[x_name]
     y = params[y_name]
 
     if limits is None:
-        (x_upper, x_lower) = (x.value + 5 * x.stderr, x.value - 5 * x.stderr)
-        (y_upper, y_lower) = (y.value + 5 * y.stderr, y.value - 5 * y.stderr)
+        (x_upper, x_lower) = (x.value + nsigma * x.stderr, x.value - nsigma * x.stderr)
+        (y_upper, y_lower) = (y.value + nsigma * y.stderr, y.value - nsigma * y.stderr)
     elif len(limits) == 2:
         (x_upper, x_lower) = limits[0]
         (y_upper, y_lower) = limits[1]
@@ -425,29 +429,30 @@ def conf_interval2d(minimizer, result, x_name, y_name, nx=10, ny=10,
     y_points = np.linspace(y_lower, y_upper, ny)
     grid = np.dstack(np.meshgrid(x_points, y_points))
 
-    x.vary = False
-    y.vary = False
+    x.vary, y.vary = False, False
 
-    def calc_prob(vals, restore=False):
-        """Calculate the probability."""
-        if restore:
-            restore_vals(org, result.params)
-        x.value = vals[0]
-        y.value = vals[1]
-        save_x = result.params[x.name]
-        save_y = result.params[y.name]
-        result.params[x.name] = x
-        result.params[y.name] = y
+    def calc_chisqr(vals, restore=False):
+        """Calculate chi-square for a set of parameter values."""
+        save_x = x.value
+        save_y = y.value
+        result.params[x.name].value = vals[0]
+        result.params[y.name].value = vals[1]
         minimizer.prepare_fit(params=result.params)
         out = minimizer.leastsq()
-        prob = prob_func(result, out)
-        result.params[x.name] = save_x
-        result.params[y.name] = save_y
-        return prob
+        result.params[x.name].value = save_x
+        result.params[y.name].value = save_y
+        return out.chisqr
 
-    out = x_points, y_points, np.apply_along_axis(calc_prob, -1, grid)
+    # grid of chi-square
+    out_mat = np.apply_along_axis(calc_chisqr, -1, grid)
+
+    # compute grid of sigma values from chi-square
+    if not chi2_out:
+        chisqr0 = out_mat.min()
+        chisqr0 = min(best_chisqr, chisqr0)
+        out_mat = np.sqrt((out_mat-chisqr0)/redchi)
 
     x.vary, y.vary = True, True
     restore_vals(org, result.params)
-    result.chisqr = best_chi
-    return out
+    result.chisqr = best_chisqr
+    return x_points, y_points, out_mat

@@ -42,7 +42,7 @@ pars['peak_sigma'].set(min=0.5, max=2)
 
 def per_iteration(pars, iteration, resid, *args, **kws):
     """Iteration callback, will abort at iteration 23."""
-    return iteration == 23
+    return iteration == 17
 
 
 fitmethods = ['ampgo', 'brute', 'basinhopping', 'differential_evolution',
@@ -56,7 +56,7 @@ def test_itercb_model_class(method, calc_covar):
     out = mod.fit(y, pars, x=x, method=method, iter_cb=per_iteration,
                   calc_covar=calc_covar)
 
-    assert out.nfev == 23
+    assert out.nfev == 17
     assert out.aborted
     assert not out.errorbars
     assert not out.success
@@ -66,18 +66,15 @@ def test_itercb_model_class(method, calc_covar):
 @pytest.mark.parametrize("method", fitmethods)
 def test_itercb_minimizer_class(method, calc_covar):
     """Test the iteration callback for all solvers."""
-    if method in ('nelder', 'differential_evolution'):
-        pytest.xfail("scalar_minimizers behave differently, but shouldn't!!")
-
     mini = Minimizer(residual, pars, fcn_args=(x, y), iter_cb=per_iteration,
                      calc_covar=calc_covar)
     out = mini.minimize(method=method)
-
-    assert out.nfev == 23
+    assert out.nfev == 17
     assert out.aborted
     assert not out.errorbars
     assert not out.success
-    assert mini._abort
+    if method not in ('nelder', 'differential_evolution'):
+        assert mini._abort
 
 
 fitmethods = ['leastsq', 'least_squares']

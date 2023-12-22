@@ -1,3 +1,4 @@
+import sys
 import unittest
 
 import numpy as np
@@ -10,7 +11,8 @@ from uncertainties import ufloat
 from lmfit import Minimizer, Parameters, minimize
 from lmfit.lineshapes import gaussian
 from lmfit.minimizer import (HAS_EMCEE, SCALAR_METHODS, MinimizerResult,
-                             _nan_policy)
+                             coerce_float64)
+from lmfit.models import SineModel
 
 try:
     import numdifftools  # noqa: F401
@@ -316,6 +318,32 @@ def test_ufloat():
     assert_allclose(y.std_dev, 0.0, rtol=1.e-7)
 
 
+def test_stderr_propagation():
+    """Test propagation of uncertainties to constraint expressions."""
+    model = SineModel()
+    params = model.make_params(amplitude=1, frequency=9.0, shift=0)
+    params.add("period", expr="1/frequency")
+    params.add("period_2a", expr="2*period")
+    params.add("period_2b", expr="2/frequency")
+    params.add("thing_1", expr="shift + frequency")
+    params.add("thing_2", expr="shift + 1/period")
+
+    np.random.seed(3)
+    xs = np.linspace(0, 1, 51)
+    ys = np.sin(7.45 * xs) + 0.01 * np.random.normal(size=xs.shape)
+
+    result = model.fit(ys, x=xs, params=params)
+
+    opars = result.params
+    assert_allclose(opars['period'].stderr, 1.1587e-04, rtol=1.e-3)
+    assert_allclose(opars['period_2b'].stderr, 2.3175e-04, rtol=1.e-3)
+    assert_allclose(opars['thing_1'].stderr, 0.0037291, rtol=1.e-3)
+
+    assert_allclose(opars['period_2a'].stderr, 2*opars['period'].stderr, rtol=1.e-5)
+    assert_allclose(opars['period_2b'].stderr, opars['period_2a'].stderr, rtol=1.e-5)
+    assert_allclose(opars['thing_1'].stderr, opars['thing_2'].stderr, rtol=1.e-5)
+
+
 class CommonMinimizerTest(unittest.TestCase):
 
     def setUp(self):
@@ -391,13 +419,15 @@ class CommonMinimizerTest(unittest.TestCase):
         for para, true_para in zip(out.params.values(), self.p_true.values()):
             check_wo_stderr(para, true_para.value, sig=sig)
 
-    def test_nan_policy(self):
+    def test_coerce_float64(self):
         # check that an error is raised if there are nan in
         # the data returned by userfcn
         self.data[0] = np.nan
 
         for method in SCALAR_METHODS:
-            if method == 'differential_evolution':
+            if method == 'cobyla' and sys.platform == 'darwin':
+                pytest.xfail("this aborts Python on macOS...")
+            elif method == 'differential_evolution':
                 pytest.raises(RuntimeError, self.mini.scalar_minimize,
                               SCALAR_METHODS[method])
             else:
@@ -414,17 +444,17 @@ class CommonMinimizerTest(unittest.TestCase):
         for para, true_para in zip(res.params.values(), self.p_true.values()):
             check_wo_stderr(para, true_para.value, sig=0.15)
 
-    def test_nan_policy_function(self):
+    def test_coerce_float64_function(self):
         a = np.array([0, 1, 2, 3, np.nan])
-        pytest.raises(ValueError, _nan_policy, a)
-        assert np.isnan(_nan_policy(a, nan_policy='propagate')[-1])
-        assert_equal(_nan_policy(a, nan_policy='omit'), [0, 1, 2, 3])
+        pytest.raises(ValueError, coerce_float64, a)
+        assert np.isnan(coerce_float64(a, nan_policy='propagate')[-1])
+        assert_equal(coerce_float64(a, nan_policy='omit'), [0, 1, 2, 3])
 
         a[-1] = np.inf
-        pytest.raises(ValueError, _nan_policy, a)
-        assert np.isposinf(_nan_policy(a, nan_policy='propagate')[-1])
-        assert_equal(_nan_policy(a, nan_policy='omit'), [0, 1, 2, 3])
-        assert_equal(_nan_policy(a, handle_inf=False), a)
+        pytest.raises(ValueError, coerce_float64, a)
+        assert np.isposinf(coerce_float64(a, nan_policy='propagate')[-1])
+        assert_equal(coerce_float64(a, nan_policy='omit'), [0, 1, 2, 3])
+        assert_equal(coerce_float64(a, handle_inf=False), a)
 
     def test_emcee(self):
         # test emcee

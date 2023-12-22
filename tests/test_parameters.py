@@ -1,7 +1,7 @@
 """Tests for the Parameters class."""
 
-
 from copy import copy, deepcopy
+import os
 import pickle
 
 import numpy as np
@@ -9,6 +9,7 @@ from numpy.testing import assert_allclose
 import pytest
 
 import lmfit
+from lmfit.models import VoigtModel
 
 
 @pytest.fixture
@@ -20,9 +21,9 @@ def parameters():
                              user_data=1))
     pars.add(lmfit.Parameter(name='b', value=0.0, vary=True, min=-250.0,
                              max=250.0, expr="2.0*a", brute_step=25.0,
-                             user_data=2.5))
+                             user_data={'test': 123}))
     exp_attr_values_A = ('a', 10.0, True, -100.0, 100.0, None, 5.0, 1)
-    exp_attr_values_B = ('b', 20.0, False, -250.0, 250.0, "2.0*a", 25.0, 2.5)
+    exp_attr_values_B = ('b', 20.0, False, -250.0, 250.0, "2.0*a", 25.0, {'test': 123})
     assert_parameter_attributes(pars['a'], exp_attr_values_A)
     assert_parameter_attributes(pars['b'], exp_attr_values_B)
     return pars, exp_attr_values_A, exp_attr_values_B
@@ -58,7 +59,9 @@ def test_parameters_copy(parameters):
     pars_copy = pars.copy()
     pars__copy__ = pars.__copy__()
 
+    # modifying the original parameters should not modify the copies
     pars['a'].set(value=100)
+    pars['b'].user_data['test'] = 456
 
     for copied in [copy_pars, pars_copy, pars__copy__]:
         assert isinstance(copied, lmfit.Parameters)
@@ -380,7 +383,7 @@ def test_parameters__repr_html_(parameters):
     repr_html = pars._repr_html_()
 
     assert isinstance(repr_html, str)
-    assert '<table><tr><th> name </th><th> value </th>' in repr_html
+    assert '<table class="jp-toc-ignore"><caption>Parameters</caption>' in repr_html
 
 
 def test_parameters_add():
@@ -585,3 +588,49 @@ def test_invalid_expr_exceptions():
         p1['y'].set(expr='t+')
     assert len(p1['y']._expr_eval.error) > 0
     assert_allclose(p1['y'].value, 34.0)
+
+
+def test_create_params():
+    """Tests for create_params() function."""
+    pars1 = lmfit.create_params(a=8, b=9,
+                                c=dict(value=3, min=0, max=10),
+                                d=dict(expr='a+b/c'),
+                                e=dict(value=10000, brute_step=4))
+
+    assert pars1['a'].value == 8
+    assert pars1['b'].value == 9
+    assert pars1['c'].value == 3
+    assert pars1['c'].min == 0
+    assert pars1['c'].max == 10
+    assert pars1['d'].expr == 'a+b/c'
+    assert pars1['d'].value == 11
+    assert pars1['e'].value == 10000
+    assert pars1['e'].brute_step == 4
+
+
+def test_unset_constrained_param():
+    """test 'unsetting' a constrained parameter by
+    just setting `param.vary = True`
+
+    """
+    data = np.loadtxt(os.path.join(os.path.dirname(__file__), '..',
+                                   'examples', 'test_peak.dat'))
+    x = data[:, 0]
+    y = data[:, 1]
+
+    # initial fit
+    mod = VoigtModel()
+    params = mod.guess(y, x=x)
+    out1 = mod.fit(y, params, x=x)
+
+    assert out1.nvarys == 3
+    assert out1.chisqr < 20.0
+
+    # now just gamma to vary
+    params['gamma'].vary = True
+    out2 = mod.fit(y, params, x=x)
+
+    assert out2.nvarys == 4
+    assert out2.chisqr < out1.chisqr
+    assert out2.rsquared > out1.rsquared
+    assert out2.params['gamma'].correl['sigma'] < -0.6

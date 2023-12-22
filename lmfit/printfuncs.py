@@ -58,10 +58,15 @@ def gformat(val, length=11):
     Positive values will have leading blank.
 
     """
+    if val is None or isinstance(val, bool):
+        return f'{repr(val):>{length}s}'
     try:
         expon = int(log10(abs(val)))
     except (OverflowError, ValueError):
         expon = 0
+    except TypeError:
+        return f'{repr(val):>{length}s}'
+
     length = max(length, 7)
     form = 'e'
     prec = length - 7
@@ -77,7 +82,7 @@ def gformat(val, length=11):
 
 
 def fit_report(inpars, modelpars=None, show_correl=True, min_correl=0.1,
-               sort_pars=False):
+               sort_pars=False, correl_mode='list'):
     """Generate a report of the fitting results.
 
     The report contains the best-fit values for the parameters and their
@@ -99,6 +104,11 @@ def fit_report(inpars, modelpars=None, show_correl=True, min_correl=0.1,
         they were added to the Parameters dictionary. If callable, then
         this (one argument) function is used to extract a comparison key
         from each list element.
+    correl_mode : {'list', table'} str, optional
+        Mode for how to show correlations. Can be either 'list' (default)
+        to show a sorted (if ``sort_pars`` is True) list of correlation
+        values, or 'table' to show a complete, formatted table of
+        correlations.
 
     Returns
     -------
@@ -137,6 +147,8 @@ def fit_report(inpars, modelpars=None, show_correl=True, min_correl=0.1,
         add(f"    reduced chi-square = {getfloat_attr(result, 'redchi')}")
         add(f"    Akaike info crit   = {getfloat_attr(result, 'aic')}")
         add(f"    Bayesian info crit = {getfloat_attr(result, 'bic')}")
+        if hasattr(result, 'rsquared'):
+            add(f"    R-squared          = {getfloat_attr(result, 'rsquared')}")
         if not result.errorbars:
             add("##  Warning: uncertainties could not be estimated:")
             if result.method in ('leastsq', 'least_squares') or HAS_NUMDIFFTOOLS:
@@ -184,7 +196,11 @@ def fit_report(inpars, modelpars=None, show_correl=True, min_correl=0.1,
         else:
             add(f"    {nout} {par.value: .7g} (fixed)")
 
-    if show_correl:
+    if show_correl and correl_mode.startswith('tab'):
+        add('[[Correlations]] ')
+        for line in correl_table(params).split('\n'):
+            buff.append('  %s' % line)
+    elif show_correl:
         correls = {}
         for i, name in enumerate(parnames):
             par = params[name]
@@ -204,8 +220,28 @@ def fit_report(inpars, modelpars=None, show_correl=True, min_correl=0.1,
             maxlen = max(len(k) for k in list(correls.keys()))
         for name, val in sort_correl:
             lspace = max(0, maxlen - len(name))
-            add(f"    C({name}){(' '*30)[:lspace]} = {val:.3f}")
+            add(f"    C({name}){(' '*30)[:lspace]} = {val:+.4f}")
     return '\n'.join(buff)
+
+
+def lcol(s, cat='td'):
+    "html left column"
+    return f"<{cat} style='text-align:left'>{s}</{cat}>"
+
+
+def rcol(s, cat='td'):
+    "html right column"
+    return f"<{cat} style='text-align:right'>{s}</{cat}>"
+
+
+def trow(columns, cat='td'):
+    "html row"
+    nlast = len(columns)-1
+    rows = []
+    for i, col in enumerate(columns):
+        cform = rcol if i == nlast else lcol
+        rows.append(cform(col, cat=cat))
+    return rows
 
 
 def fitreport_html_table(result, show_correl=True, min_correl=0.1):
@@ -230,11 +266,15 @@ def fitreport_html_table(result, show_correl=True, min_correl=0.1):
     html = []
     add = html.append
 
-    def stat_row(label, val, val2=''):
-        add(f'<tr><td>{label}</td><td>{val}</td><td>{val2}</td></tr>')
+    def stat_row(label, val, val2=None, cat='td'):
+        if val2 is None:
+            rows = trow([label, val], cat=cat)
+        else:
+            rows = trow([label, val, val2], cat=cat)
+        add(f"<tr>{''.join(rows)}</tr>")
 
-    add('<h2>Fit Statistics</h2>')
-    add('<table>')
+    add('<table class="jp-toc-ignore">')
+    add('<caption class="jp-toc-ignore">Fit Statistics</caption>')
     stat_row('fitting method', result.method)
     stat_row('# function evals', result.nfev)
     stat_row('# data points', result.ndata)
@@ -243,8 +283,9 @@ def fitreport_html_table(result, show_correl=True, min_correl=0.1):
     stat_row('reduced chi-square', gformat(result.redchi))
     stat_row('Akaike info crit.', gformat(result.aic))
     stat_row('Bayesian info crit.', gformat(result.bic))
+    if hasattr(result, 'rsquared'):
+        stat_row('R-squared', gformat(result.rsquared))
     add('</table>')
-    add('<h2>Variables</h2>')
     add(params_html_table(result.params))
     if show_correl:
         correls = []
@@ -261,13 +302,50 @@ def fitreport_html_table(result, show_correl=True, min_correl=0.1):
         if len(correls) > 0:
             sort_correls = sorted(correls, key=lambda val: abs(val[2]))
             sort_correls.reverse()
-            extra = f'(unreported correlations are < {min_correl:.3f})'
-            add(f'<h2>Correlations {extra}</h2>')
-            add('<table>')
+            extra = f'(unreported values are < {min_correl:.3f})'
+            add('<table class="jp-toc-ignore">')
+            add(f'<caption>Correlations {extra}</caption>')
+            stat_row('Parameter1', 'Parameter 2', 'Correlation', cat='th')
             for name1, name2, val in sort_correls:
-                stat_row(name1, name2, f"{val:.4f}")
+                stat_row(name1, name2, f"{val:+.4f}")
             add('</table>')
     return ''.join(html)
+
+
+def correl_table(params):
+    """Return a printable correlation table for a Parameters object."""
+    varnames = [vname for vname in params if params[vname].vary]
+    nwid = max(8, max([len(vname) for vname in varnames])) + 1
+
+    def sfmt(a):
+        return f" {a:{nwid}s}"
+
+    def ffmt(a):
+        return sfmt(f"{a:+.4f}")
+
+    title = ['', sfmt('Variable')]
+    title.extend([sfmt(vname) for vname in varnames])
+
+    title = '|'.join(title) + '|'
+    bar = [''] + ['-'*(nwid+1) for i in range(len(varnames)+1)] + ['']
+    bar = '+'.join(bar)
+
+    buff = [bar, title, bar]
+
+    for vname, par in params.items():
+        if not par.vary:
+            continue
+        line = ['', sfmt(vname)]
+        for vother in varnames:
+            if vother == vname:
+                line.append(ffmt(1))
+            elif vother in par.correl:
+                line.append(ffmt(par.correl[vother]))
+            else:
+                line.append('unknown')
+        buff.append('|'.join(line) + '|')
+    buff.append(bar)
+    return '\n'.join(buff)
 
 
 def params_html_table(params):
@@ -291,10 +369,7 @@ def params_html_table(params):
     html = []
     add = html.append
 
-    def cell(x, cat='td'):
-        return add(f'<{cat}> {x} </{cat}>')
-
-    add('<table><tr>')
+    add('<table class="jp-toc-ignore"><caption>Parameters</caption>')
     headers = ['name', 'value']
     if has_err:
         headers.extend(['standard error', 'relative error'])
@@ -303,20 +378,21 @@ def params_html_table(params):
         headers.append('expression')
     if has_brute:
         headers.append('brute step')
-    for h in headers:
-        cell(h, cat='th')
-    add('</tr>')
+
+    hrow = trow(headers, cat='th')
+    add(f"<tr>{''.join(hrow)}</tr>")
 
     for par in params.values():
         rows = [par.name, gformat(par.value)]
         if has_err:
             serr = ''
+            spercent = ''
             if par.stderr is not None:
                 serr = gformat(par.stderr)
                 try:
                     spercent = f'({abs(par.stderr/par.value):.2%})'
                 except ZeroDivisionError:
-                    spercent = ''
+                    pass
             rows.extend([serr, spercent])
         rows.extend((par.init_value, gformat(par.min),
                      gformat(par.max), f'{par.vary}'))
@@ -325,17 +401,14 @@ def params_html_table(params):
             if par.expr is not None:
                 expr = par.expr
             rows.append(expr)
-
         if has_brute:
             brute_step = 'None'
             if par.brute_step is not None:
                 brute_step = gformat(par.brute_step)
             rows.append(brute_step)
 
-        add('<tr>')
-        for r in rows:
-            cell(r)
-        add('</tr>')
+        hrow = trow(rows, cat='td')
+        add(f"<tr>{''.join(hrow)}</tr>")
     add('</table>')
     return ''.join(html)
 

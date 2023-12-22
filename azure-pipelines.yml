@@ -3,7 +3,6 @@
 # Add steps that analyze code, save the dist with the build record, publish to a PyPI-compatible index, and more:
 # https://docs.microsoft.com/azure/devops/pipelines/languages/python
 
-
 stages:
 
 - stage: check_codestyle
@@ -15,14 +14,23 @@ stages:
       steps:
         - task: UsePythonVersion@0
           inputs:
-            versionSpec: '3.9'
+            versionSpec: '3.11'
         - script: |
-            python -m pip install --upgrade pip setuptools wheel
-            pip install pre-commit
-          displayName: 'Install Python dependencies'
+            python -m pip install --upgrade build pip setuptools wheel
+          displayName: 'Install Python build tools and dependencies'
+        - script: |
+            python -m build
+            python -m pip install '.[dev]'
+          displayName: 'Build wheel/sdist and install lmfit'
         - script: |
             pre-commit install ; pre-commit run --all-files
           displayName: 'Run pre-commit hooks'
+        - script: |
+            check-wheel-contents dist/*.whl
+          displayName: 'Run check-wheel-contents'
+        - script: |
+            twine check dist/*
+          displayName: "Run twine check"
 
 - stage: build_documentation
   dependsOn: check_codestyle
@@ -35,14 +43,14 @@ stages:
       steps:
         - task: UsePythonVersion@0
           inputs:
-            versionSpec: '3.9'
+            versionSpec: '3.11'
         - script: |
-            python -m pip install --upgrade pip setuptools wheel
-            pip install -r requirements-dev.txt
-          displayName: 'Install Python dependencies'
+            python -m pip install --upgrade build pip setuptools wheel
+          displayName: 'Install Python build tools'
         - script: |
-            python setup.py install
-          displayName: 'Install lmfit'
+            python -m build
+            python -m pip install '.[doc]'
+          displayName: 'Build wheel/sdist and install lmfit'
         - script: |
             sudo apt-get update && sudo apt-get install -qq -y texlive-latex-extra latexmk
           displayName: 'Install TeX Live'
@@ -59,14 +67,10 @@ stages:
         vmImage: 'ubuntu-latest'
       strategy:
         matrix:
-          Python36:
-            python.version: '3.6'
           Python37:
             python.version: '3.7'
           Python38:
             python.version: '3.8'
-          Python39:
-            python.version: '3.9'
 
       steps:
         - task: UsePythonVersion@0
@@ -79,18 +83,18 @@ stages:
             swig libmpc-dev
           displayName: 'Install dependencies'
         - script: |
-            python -m pip install --upgrade pip wheel
-            pip install setuptools==57.5.0
-            pip install asteval==0.9.22 numpy==1.18 scipy==1.4.0 uncertainties==3.0.1 pytest coverage codecov flaky
+            python -m pip install --upgrade build pip wheel
+            python -m pip install asteval==0.9.28 numpy==1.19.0 scipy==1.6.0 uncertainties==3.1.4
           displayName: 'Install minimum required version of dependencies'
         - script: |
-            python setup.py install
-          displayName: 'Install lmfit'
+            python -m build
+            python -m pip install ".[test]"
+          displayName: 'Build wheel/sdist and install lmfit'
         - script: |
-            pip list
+            python -m pip list
           displayName: 'List installed Python packages'
         - script: |
-            pip install pytest-azurepipelines pytest-cov
+            python -m pip install pytest-azurepipelines
             pytest
           displayName: 'Run test-suite and collect coverage'
         - script: |
@@ -115,14 +119,16 @@ stages:
         vmImage: 'ubuntu-latest'
       strategy:
         matrix:
-          Python36:
-            python.version: '3.6'
           Python37:
             python.version: '3.7'
           Python38:
             python.version: '3.8'
           Python39:
             python.version: '3.9'
+          Python310:
+            python.version: '3.10'
+          Python311:
+            python.version: '3.11'
 
       steps:
         - task: UsePythonVersion@0
@@ -135,17 +141,17 @@ stages:
             swig libmpc-dev
           displayName: 'Install dependencies'
         - script: |
-            python -m pip install --upgrade pip setuptools wheel
-            pip install -r requirements-dev.txt
+            python -m pip install --upgrade build pip setuptools wheel
           displayName: 'Install latest available version of Python dependencies'
         - script: |
-            python setup.py install
-          displayName: 'Install lmfit'
+            python -m build
+            python -m pip install '.[all]'
+          displayName: 'Build wheel/sdist and install lmfit'
         - script: |
-            pip list
+            python -m pip list
           displayName: 'List installed Python packages'
         - script: |
-            pip install pytest-azurepipelines pytest-cov
+            python -m pip install pytest-azurepipelines
             pytest
           displayName: 'Run test-suite and collect coverage'
         - script: |
@@ -161,6 +167,7 @@ stages:
             ./codecov -v -f "coverage.xml"
           displayName: 'Upload to codecov.io'
 
+# Python 3.11 on Windows currently fails to build pycairo
 - stage: test_Windows_latest
   dependsOn: check_codestyle
   condition: succeededOrFailed()
@@ -170,8 +177,8 @@ stages:
         vmImage: 'windows-latest'
       strategy:
         matrix:
-          Python39:
-            python.version: '3.9'
+          Python310:
+            python.version: '3.10'
 
       steps:
         - task: UsePythonVersion@0
@@ -179,34 +186,66 @@ stages:
             versionSpec: '$(python.version)'
           displayName: 'Use Python $(python.version)'
         - script: |
-            python -m pip install --upgrade pip setuptools wheel
-            pip install -r requirements-dev.txt
+            python -m pip install --upgrade build pip setuptools wheel
           displayName: 'Install latest available version of Python dependencies'
         - script: |
-            python setup.py install
-          displayName: 'Install lmfit'
+            python -m build
+            python -m pip install .[all]
+          displayName: 'Build wheel/sdist and install lmfit'
         - script: |
-            pip list
+            python -m pip list
           displayName: 'List installed Python packages'
         - script: |
-            pip install pytest-azurepipelines pytest-cov
+            python -m pip install pytest-azurepipelines
             pytest
           displayName: 'Run test-suite'
         - powershell:
             cd doc ; .\make.bat html
           displayName: 'Build the HTML documentation'
 
+- stage: test_macOS_latest
+  dependsOn: check_codestyle
+  condition: succeededOrFailed()
+  jobs:
+    - job:
+      pool:
+        vmImage: 'macos-latest'
+      strategy:
+        matrix:
+          Python311:
+            python.version: '3.11'
+
+      steps:
+        - task: UsePythonVersion@0
+          inputs:
+            versionSpec: '$(python.version)'
+          displayName: 'Use Python $(python.version)'
+        - script: |
+            python -m pip install --upgrade build pip setuptools wheel
+          displayName: 'Install latest available version of Python dependencies'
+        - script: |
+            python -m build
+            python -m pip install '.[all]'
+          displayName: 'Build wheel/sdist and install lmfit'
+        - script: |
+            python -m pip list
+          displayName: 'List installed Python packages'
+        - script: |
+            python -m pip install pytest-azurepipelines
+            pytest
+          displayName: 'Run test-suite and collect coverage'
+
 - stage: development_version
   dependsOn: check_codestyle
   condition: succeededOrFailed()
   jobs:
-    - job: Python310_dev
+    - job: Python312_dev
       pool:
         vmImage: 'ubuntu-latest'
       steps:
         - script: |
             sudo add-apt-repository ppa:deadsnakes/nightly
-            sudo apt-get update && sudo apt-get install -y --no-install-recommends python3.10-dev python3.10-distutils
+            sudo apt-get update && sudo apt-get install -y --no-install-recommends python3.12-dev python3.12-venv
           displayName: Install Python development version from the deadsnakes PPA
         - script: |
             sudo apt-get update && sudo apt-get install -yq --no-install-suggests --no-install-recommends \
@@ -215,41 +254,47 @@ stages:
           displayName: 'Install dependencies'
         - script: |
             export PATH=/home/vsts/.local/bin:$PATH
-            curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
-            python3.10 get-pip.py --user
-            pip3.10 install -U pip setuptools wheel pybind11 cython pythran
-          displayName: 'Install pip, setuptools, wheel, pybind11, cython, and pythran'
+            ##curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+            ##python3.12 get-pip.py --user
+            python3.12 -m ensurepip --upgrade
+            pip3.12 install -U build pip setuptools wheel pybind11 cython || echo -e "\043#vso[task.logissue type=warning;] Allowed failure for development version!!"
+          displayName: 'Install build, pip, setuptools, wheel, pybind11, and cython'
         - script: |
             export PATH=/home/vsts/.local/bin:$PATH
-            export numpy_version=1.21.2
+            export numpy_version=1.25.0
             wget https://github.com/numpy/numpy/releases/download/v${numpy_version}/numpy-${numpy_version}.tar.gz
             tar xzvf numpy-${numpy_version}.tar.gz
             cd numpy-${numpy_version}
-            python3.10 setup.py install --user
+            python3.12 setup.py install --user || echo -e "\043#vso[task.logissue type=warning;] Allowed failure for development version!!"
           displayName: 'Install latest available version of NumPy'
         - script: |
             export PATH=/home/vsts/.local/bin:$PATH
-            export scipy_version=1.7.1
+            pip3.12 install -U pythran || echo -e "\043#vso[task.logissue type=warning;] Allowed failure for development version!!"
+          displayName: 'Install pythran'
+        - script: |
+            export PATH=/home/vsts/.local/bin:$PATH
+            export scipy_version=1.10.1
             wget https://github.com/scipy/scipy/releases/download/v${scipy_version}/scipy-${scipy_version}.tar.gz
             tar xzvf scipy-${scipy_version}.tar.gz
             cd scipy-${scipy_version}
-            python3.10 setup.py install --user
+            python3.12 setup.py install --user || echo -e "\043#vso[task.logissue type=warning;] Allowed failure for development version!!"
           displayName: 'Install latest available version of SciPy'
         - script: |
             export PATH=/home/vsts/.local/bin:$PATH
             # remove numdifftools for now as it pulls in statsmodels, that wants to build with NumPy 1.14.5
-            pip3.10 install asteval uncertainties dill emcee flaky
+            pip3.12 install asteval uncertainties dill emcee flaky pytest pytest-cov || echo -e "\043#vso[task.logissue type=warning;] Allowed failure for development version!!"
           displayName: 'Install latest available version of Python dependencies'
         - script: |
-            python3.10 setup.py install --user
-          displayName: 'Install lmfit'
+            python3.12 -m build
+            python3.12 -m pip install '.[test]' --user || echo -e "\043#vso[task.logissue type=warning;] Allowed failure for development version!!"
+          displayName: 'Build wheel/sdist and install lmfit'
         - script: |
             export PATH=/home/vsts/.local/bin:$PATH
-            pip3.10 list
+            pip3.12 list || echo -e "\043#vso[task.logissue type=warning;] Allowed failure for development version!!"
           displayName: 'List installed Python packages'
         - script: |
             export PATH=/home/vsts/.local/bin:$PATH
-            pip3.10 install pytest pytest-azurepipelines pytest-cov
+            pip3.12 install pytest-azurepipelines
             cd $(Agent.BuildDirectory)/s/tests
             pytest || echo -e "\043#vso[task.logissue type=warning;] Allowed failure for development version!!"
           displayName: 'Run test-suite'

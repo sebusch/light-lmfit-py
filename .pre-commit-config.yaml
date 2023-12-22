@@ -2,34 +2,34 @@ exclude: 'doc/conf.py'
 
 repos:
 -   repo: https://github.com/asottile/pyupgrade
-    rev: v2.29.0
+    rev: v3.7.0
     hooks:
     -   id: pyupgrade
-        args: [--py36-plus]
+        args: [--py37-plus]
 
 -   repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.0.1
+    rev: v4.4.0
     hooks:
     -   id: check-ast
     -   id: check-builtin-literals
     -   id: check-case-conflict
     -   id: check-merge-conflict
+    -   id: check-toml
     -   id: debug-statements
     -   id: end-of-file-fixer
     -   id: mixed-line-ending
     -   id: trailing-whitespace
-    -   id: requirements-txt-fixer
     -   id: fix-encoding-pragma
         args: [--remove]
 
--   repo: https://gitlab.com/pycqa/flake8
-    rev: 3.9.2
+-   repo: https://github.com/PyCQA/flake8
+    rev: 6.0.0
     hooks:
     -   id: flake8
         additional_dependencies: [flake8-deprecated, flake8-mutable]
 
 -   repo: https://github.com/PyCQA/isort/
-    rev: 5.9.3
+    rev: 5.12.0
     hooks:
     -   id: isort
 
@@ -37,29 +37,30 @@ repos:
     hooks:
     -   id: rstcheck
         name: rstcheck
-        entry: rstcheck
+        entry: rstcheck --report-level WARNING
         files: '.rst'
         language: python
         additional_dependencies: [rstcheck, sphinx]
 
 -   repo: https://github.com/pre-commit/pygrep-hooks
-    rev: v1.9.0
+    rev: v1.10.0
     hooks:
     -   id: rst-backticks
     -   id: rst-directive-colons
     -   id: rst-inline-touching-normal
+    -   id: python-check-blanket-noqa
 
 -   repo: https://github.com/codespell-project/codespell
-    rev: v2.1.0
+    rev: v2.2.5
     hooks:
     -   id: codespell
         files: '.py|.rst'
         exclude: 'doc/doc_examples_to_gallery.py'
         # escaped characters currently do not work correctly
         # so \nnumber is considered a spelling error....
-        args: [-L nnumber]
+        args: ["-L nnumber", "-L mone"]
 
 -   repo: https://github.com/asottile/yesqa
-    rev: v1.2.3
+    rev: v1.5.0
     hooks:
     -   id: yesqa

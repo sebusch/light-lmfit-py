@@ -7,7 +7,8 @@ from lmfit import (Minimizer, Parameters, ci_report, conf_interval, fit_report,
                    report_ci, report_fit)
 from lmfit.lineshapes import gaussian
 from lmfit.models import GaussianModel
-from lmfit.printfuncs import alphanumeric_sort, getfloat_attr, gformat
+from lmfit.printfuncs import (alphanumeric_sort, correl_table,
+                              fitreport_html_table, getfloat_attr, gformat)
 
 np.random.seed(0)
 
@@ -141,9 +142,8 @@ def test_reports_created(fitresult):
 
     html_report = fitresult._repr_html_()
     assert len(html_report) > 1000
-    for header in report_headers:
-        header_title = header.replace('[', '').replace(']', '').strip()
-        assert header_title in html_report
+    for header in ('Model', 'Fit Statistics', 'Parameters', 'Correlations'):
+        assert header in html_report
 
 
 def test_fitreports_init_values(fitresult):
@@ -199,6 +199,22 @@ def test_fitreports_sort_pars(fitresult):
     report_split = fitresult.fit_report(sort_pars=sort_length).split('\n')
     indx_vars = report_split.index('[[Variables]]')
     assert 'fwhm' in report_split[indx_vars+1]
+
+
+def test_correl_table(fitresult, capsys):
+    """Verify that ``correl_table`` is not empty."""
+    table_lines = correl_table(fitresult.params).split('\n')
+    nvarys = fitresult.nvarys
+
+    assert len(table_lines) == nvarys+4
+    assert len(table_lines[5]) > nvarys*10
+
+
+def test_fit_report_correl_table(fitresult, capsys):
+    """Verify that ``correl_table`` is not empty."""
+    out = fitresult.fit_report(correl_mode='table')
+    assert '[[Correlations]]' in out
+    assert '----+' in out
 
 
 def test_report_fit(fitresult, capsys):
@@ -305,11 +321,11 @@ def test_report_modelpars(fitresult):
 
 
 def test_report_parvalue_non_numeric(fitresult):
-    """Verify that a non-numeric value is caught (can this ever happens?)."""
+    """Verify that a non-numeric value is handled gracefully."""
     fitresult.params['center'].value = None
     fitresult.params['center'].stderr = None
     report = fitresult.fit_report()
-    assert 'center:     Non Numeric Value?' in report
+    assert len(report) > 50
 
 
 def test_report_zero_value_spercent(fitresult):
@@ -325,6 +341,25 @@ def test_report_zero_value_spercent(fitresult):
     indx = [i for i, val in enumerate(html_params_split) if 'center' in val][0]
     assert '%' not in html_params_split[indx]
     assert '%' in html_params_split[indx+1]
+
+
+@pytest.mark.skipif(not lmfit.minimizer.HAS_EMCEE, reason="requires emcee v3")
+def test_spercent_html_table():
+    """Regression test for GitHub Issue #768."""
+    np.random.seed(2021)
+    x = np.random.uniform(size=100)
+    y = x + 0.1 * np.random.uniform(size=x.size)
+
+    def res(par, x, y):
+        return y - par['k'] * x + par['b']
+
+    params = lmfit.Parameters()
+    params.add('b', 0, vary=False)
+    params.add('k', 1)
+
+    fitter = lmfit.Minimizer(res, params, fcn_args=(x, y))
+    fit_res = fitter.minimize(method='emcee', steps=5)
+    fitreport_html_table(fit_res)
 
 
 def test_ci_report(confidence_interval):

@@ -4,12 +4,13 @@ import time
 
 from asteval import Interpreter, get_ast_names
 import numpy as np
+from scipy.interpolate import splev, splrep
 
 from . import lineshapes
 from .lineshapes import (breit_wigner, damped_oscillator, dho, doniach,
                          expgaussian, exponential, gaussian, gaussian2d,
                          linear, lognormal, lorentzian, moffat, parabolic,
-                         pearson7, powerlaw, pvoigt, rectangle, sine,
+                         pearson4, pearson7, powerlaw, pvoigt, rectangle, sine,
                          skewed_gaussian, skewed_voigt, split_lorentzian, step,
                          students_t, thermal_distribution, tiny, voigt)
 from .model import Model
@@ -167,7 +168,7 @@ class ConstantModel(Model):
                        'independent_vars': independent_vars})
 
         def constant(x, c=0.0):
-            return c
+            return c * np.ones(np.shape(x))
         super().__init__(constant, **kwargs)
 
     def guess(self, data, x=None, **kwargs):
@@ -197,14 +198,14 @@ class ComplexConstantModel(Model):
                        'independent_vars': independent_vars})
 
         def constant(x, re=0., im=0.):
-            return re + 1j*im
+            return (re + 1j*im) * np.ones(np.shape(x))
         super().__init__(constant, **kwargs)
 
     def guess(self, data, x=None, **kwargs):
         """Estimate initial model parameter values from data."""
         pars = self.make_params()
-        pars[f'{self.prefix}re'].set(value=data.real.mean())
-        pars[f'{self.prefix}im'].set(value=data.imag.mean())
+        pars[f'{self.prefix}re'].set(value=np.real(data).mean())
+        pars[f'{self.prefix}im'].set(value=np.imag(data).mean())
         return update_param_vals(pars, self.prefix, **kwargs)
 
     __init__.__doc__ = COMMON_INIT_DOC
@@ -318,6 +319,122 @@ class PolynomialModel(Model):
     guess.__doc__ = COMMON_GUESS_DOC
 
 
+class SplineModel(Model):
+    r"""A 1-D cubic spline model with a variable number of `knots` and
+    parameters `s0`, `s1`, ..., `sN`, for `N` knots.
+
+    The user must supply a list or ndarray `xknots`: the `x` values for the
+    'knots' which control the flexibility of the spline function.
+
+    The parameters `s0`, ..., `sN` (where `N` is the size of `xknots`) will
+    correspond to the `y` values for the spline knots at the `x=xknots`
+    positions where the highest order derivative will be discontinuous.
+    The resulting curve will not necessarily pass through these knot
+    points, but for finely-spaced knots, the spline parameter values will
+    be very close to the `y` values of the resulting curve.
+
+    The maximum number of knots supported is 300.
+
+    Using the `guess()` method to initialize parameter values is highly
+    recommended.
+
+    Parameters
+    ----------
+    xknots : :obj:`list` of floats or :obj:`ndarray`, required
+        x-values of knots for spline.
+    independent_vars : :obj:`list` of :obj:`str`, optional
+        Arguments to the model function that are independent variables
+        default is ['x']).
+    prefix : str, optional
+        String to prepend to parameter names, needed to add two Models
+        that have parameter names in common.
+    nan_policy : {'raise', 'propagate', 'omit'}, optional
+        How to handle NaN and missing values in data. See Notes below.
+
+    Notes
+    -----
+    1.  There must be at least 4 knot points, and not more than 300.
+
+    2. `nan_policy` sets what to do when a NaN or missing value is seen in
+          the data. Should be one of:
+
+        - `'raise'` : raise a `ValueError` (default)
+        - `'propagate'` : do nothing
+        - `'omit'` : drop missing data
+
+    """
+
+    MAX_KNOTS = 300
+    NKNOTS_MAX_ERR = f"SplineModel supports up to {MAX_KNOTS:d} knots"
+    NKNOTS_NDARRY_ERR = "SplineModel xknots must be 1-D array-like"
+    DIM_ERR = "SplineModel supports only 1-d spline interpolation"
+
+    def __init__(self, xknots, independent_vars=['x'], prefix='',
+                 nan_policy='raise', **kwargs):
+        """ """
+        kwargs.update({'prefix': prefix, 'nan_policy': nan_policy,
+                       'independent_vars': independent_vars})
+
+        if isinstance(xknots, (list, tuple)):
+            xknots = np.asarray(xknots, dtype=np.float64)
+        try:
+            xknots = xknots.flatten()
+        except Exception:
+            raise TypeError(self.NKNOTS_NDARRAY_ERR)
+
+        if len(xknots) > self.MAX_KNOTS:
+            raise TypeError(self.NKNOTS_MAX_ERR)
+
+        if len(independent_vars) > 1:
+            raise TypeError(self.DIM_ERR)
+
+        self.xknots = xknots
+        self.nknots = len(xknots)
+        self.order = 3   # cubic splines only
+
+        def spline_model(x, s0=1, s1=1, s2=1, s3=1, s4=1, s5=1):
+            "used only for the initial parsing"
+            return x
+
+        super().__init__(spline_model, **kwargs)
+
+        if 'x' not in independent_vars:
+            self.independent_vars.pop('x')
+
+        self._param_root_names = [f's{d}' for d in range(self.nknots)]
+        self._param_names = [f'{prefix}{s}' for s in self._param_root_names]
+
+        self.knots, _c, _k = splrep(self.xknots, np.ones(self.nknots),
+                                    k=self.order)
+
+    def eval(self, params=None, **kwargs):
+        """note that we override `eval()` here for a variadic function,
+        as we will not know  the number of spline parameters until run time
+        """
+        self.make_funcargs(params, kwargs)
+
+        coefs = [params[f'{self.prefix}s{d}'].value for d in range(self.nknots)]
+        coefs.extend([coefs[-1]]*(self.order+1))
+        coefs = np.array(coefs)
+        x = kwargs[self.independent_vars[0]]
+        return splev(x, [self.knots, coefs, self.order])
+
+    def guess(self, data, x, **kwargs):
+        """Estimate initial model parameter values from data."""
+        pars = self.make_params()
+
+        for i, xk in enumerate(self.xknots):
+            ix = np.abs(x-xk).argmin()
+            this = data[ix]
+            pone = data[ix+1] if ix < len(x)-2 else this
+            mone = data[ix-1] if ix > 0 else this
+            pars[f'{self.prefix}s{i}'].value = (4.*this + pone + mone)/6.
+
+        return update_param_vals(pars, self.prefix, **kwargs)
+
+    guess.__doc__ = COMMON_GUESS_DOC
+
+
 class SineModel(Model):
     r"""A model based on a sinusoidal lineshape.
 
@@ -405,6 +522,13 @@ class GaussianModel(Model):
         self.set_param_hint('fwhm', expr=fwhm_expr(self))
         self.set_param_hint('height', expr=height_expr(self))
 
+#     def post_fit(self, result):
+#         addpar = result.params.add
+#         prefix = self.prefix
+#
+#         addpar(name=f'{prefix}fwhm', expr=fwhm_expr(self))
+#         addpar(name=f'{prefix}height', expr=height_expr(self))
+
     def guess(self, data, x, negative=False, **kwargs):
         """Estimate initial model parameter values from data."""
         pars = guess_from_peak(self, data, x, negative)
@@ -438,7 +562,7 @@ class Gaussian2dModel(Model):
     """
 
     fwhm_factor = 2*np.sqrt(2*np.log(2))
-    height_factor = 1./2*np.pi
+    height_factor = 1./(2*np.pi)
 
     def __init__(self, independent_vars=['x', 'y'], prefix='', nan_policy='raise',
                  **kwargs):
@@ -457,6 +581,20 @@ class Gaussian2dModel(Model):
                + "*max({tiny}, {prefix:s}sigmay))")
         expr = fmt.format(tiny=tiny, factor=self.height_factor, prefix=self.prefix)
         self.set_param_hint('height', expr=expr)
+
+#     def post_fit(self, result):
+#         addpar = result.params.add
+#         prefix = self.prefix
+#         result.params.add(name=f'{prefix}fwhm', expr=fwhm_expr(self))
+#         result.params.add(name=f'{prefix}height', expr=height_expr(self))
+#
+#         expr = fwhm_expr(self)
+#         addpar('{prefix}fwhmx', expr=expr.replace('sigma', 'sigmax'))
+#         addpar('{prefix}fwhmy', expr=expr.replace('sigma', 'sigmay'))
+#         fmt = ("{factor:.7f}*{prefix:s}amplitude/(max({tiny}, {prefix:s}sigmax)"
+#                + "*max({tiny}, {prefix:s}sigmay))")
+#         expr = fmt.format(tiny=tiny, factor=self.height_factor, prefix=prefix)
+#         addpar(f'{prefix}height', expr=expr)
 
     def guess(self, data, x, y, negative=False, **kwargs):
         """Estimate initial model parameter values from data."""
@@ -502,6 +640,12 @@ class LorentzianModel(Model):
         self.set_param_hint('sigma', min=0)
         self.set_param_hint('fwhm', expr=fwhm_expr(self))
         self.set_param_hint('height', expr=height_expr(self))
+
+#     def post_fit(self, result):
+#         addpar = result.params.add
+#         prefix = self.prefix
+#         addpar(name=f'{prefix}fwhm', expr=fwhm_expr(self))
+#         addpar(name=f'{prefix}height', expr=height_expr(self))
 
     def guess(self, data, x, negative=False, **kwargs):
         """Estimate initial model parameter values from data."""
@@ -559,6 +703,14 @@ class SplitLorentzianModel(Model):
         self.set_param_hint('fwhm', expr=fwhm_expr.format(pre=self.prefix))
         self.set_param_hint('height', expr=height_expr.format(np.pi, tiny, pre=self.prefix))
 
+#     def post_fit(self, result):
+#         fwhm_expr = '{pre:s}sigma+{pre:s}sigma_r'
+#         height_expr = '2*{pre:s}amplitude/{0:.7f}/max({1:.7f}, ({pre:s}sigma+{pre:s}sigma_r))'
+#         addpar = result.params.add
+#         prefix = self.prefix
+#         addpar(name=f'{prefix}fwhm', expr=fwhm_expr.format(pre=prefix))
+#         addpar(name=f'{prefix}height', expr=height_expr.format(np.pi, tiny, pre=prefix))
+
     def guess(self, data, x, negative=False, **kwargs):
         """Estimate initial model parameter values from data."""
         pars = guess_from_peak(self, data, x, negative, ampscale=1.25)
@@ -615,14 +767,23 @@ class VoigtModel(Model):
     def _set_paramhints_prefix(self):
         self.set_param_hint('sigma', min=0)
         self.set_param_hint('gamma', expr=f'{self.prefix}sigma')
-
         fexpr = ("1.0692*{pre:s}gamma+" +
                  "sqrt(0.8664*{pre:s}gamma**2+5.545083*{pre:s}sigma**2)")
         hexpr = ("({pre:s}amplitude/(max({0}, {pre:s}sigma*sqrt(2*pi))))*"
-                 "wofz((1j*{pre:s}gamma)/(max({0}, {pre:s}sigma*sqrt(2)))).real")
-
+                 "real(wofz((1j*{pre:s}gamma)/(max({0}, {pre:s}sigma*sqrt(2)))))")
         self.set_param_hint('fwhm', expr=fexpr.format(pre=self.prefix))
         self.set_param_hint('height', expr=hexpr.format(tiny, pre=self.prefix))
+
+#     def post_fit(self, result):
+#         fexpr = ("1.0692*{pre:s}gamma+" +
+#                  "sqrt(0.8664*{pre:s}gamma**2+5.545083*{pre:s}sigma**2)")
+#         hexpr = ("({pre:s}amplitude/(max({0}, {pre:s}sigma*sqrt(2*pi))))*"
+#                  "wofz((1j*{pre:s}gamma)/(max({0}, {pre:s}sigma*sqrt(2)))).real")
+#
+#         addpar = result.params.add
+#         prefix = self.prefix
+#         addpar(name=f'{prefix}fwhm', expr=fexpr.format(pre=prefix))
+#         addpar(name=f'{prefix}height', expr=hexpr.format(tiny, pre=prefix))
 
     def guess(self, data, x, negative=False, **kwargs):
         """Estimate initial model parameter values from data."""
@@ -678,7 +839,19 @@ class PseudoVoigtModel(Model):
                "max({0}, ({prefix:s}sigma*sqrt(pi/log(2))))+"
                "({prefix:s}fraction*{prefix:s}amplitude)/"
                "max({0}, (pi*{prefix:s}sigma)))")
+
         self.set_param_hint('height', expr=fmt.format(tiny, prefix=self.prefix))
+
+#     def post_fit(self, result):
+#         addpar = result.params.add
+#         prefix = self.prefix
+#         hexpr = ("(((1-{prefix:s}fraction)*{prefix:s}amplitude)/"
+#                  "max({0}, ({prefix:s}sigma*sqrt(pi/log(2))))+"
+#                  "({prefix:s}fraction*{prefix:s}amplitude)/"
+#                  "max({0}, (pi*{prefix:s}sigma)))")
+#
+#         addpar(name=f'{prefix}fwhm', expr=fwhm_expr(self))
+#         addpar(name=f'{prefix}height', expr=hexpr.format(tiny, prefix=prefix))
 
     def guess(self, data, x, negative=False, **kwargs):
         """Estimate initial model parameter values from data."""
@@ -729,6 +902,59 @@ class MoffatModel(Model):
     def guess(self, data, x, negative=False, **kwargs):
         """Estimate initial model parameter values from data."""
         pars = guess_from_peak(self, data, x, negative, ampscale=0.5, sigscale=1.)
+        return update_param_vals(pars, self.prefix, **kwargs)
+
+    __init__.__doc__ = COMMON_INIT_DOC
+    guess.__doc__ = COMMON_GUESS_DOC
+
+
+class Pearson4Model(Model):
+    r"""A model based on a Pearson IV distribution.
+
+    The model has five parameters: `amplitude` (:math:`A`), `center`
+    (:math:`\mu`), `sigma` (:math:`\sigma`), `expon` (:math:`m`) and `skew` (:math:`\nu`).
+    In addition, parameters `fwhm`, `height` and `position` are included as
+    constraints to report estimates for the approximate full width at half maximum (20% error),
+    the peak height, and the peak position (the position of the maximal  function value), respectively.
+    The fwhm value has an error of about 20% in the
+    parameter range expon: (0.5, 1000], skew: [-1000, 1000].
+
+    .. math::
+
+        f(x;A,\mu,\sigma,m,\nu)=A \frac{\left|\frac{\Gamma(m+i\tfrac{\nu}{2})}{\Gamma(m)}\right|^2}{\sigma\beta(m-\tfrac{1}{2},\tfrac{1}{2})}\left[1+\frac{(x-\mu)^2}{\sigma^2}\right]^{-m}\exp\left(-\nu \arctan\left(\frac{x-\mu}{\sigma}\right)\right)
+
+    where :math:`\beta` is the beta function (see :scipydoc:`special.beta`).
+    The :meth:`guess` function always gives a starting value of 1.5 for `expon`,
+    and 0 for `skew`.
+
+    For more information, see:
+    https://en.wikipedia.org/wiki/Pearson_distribution#The_Pearson_type_IV_distribution
+
+    """
+
+    def __init__(self, independent_vars=['x'], prefix='', nan_policy='raise',
+                 **kwargs):
+        kwargs.update({'prefix': prefix, 'nan_policy': nan_policy,
+                       'independent_vars': independent_vars})
+        super().__init__(pearson4, **kwargs)
+        self._set_paramhints_prefix()
+
+    def _set_paramhints_prefix(self):
+        self.set_param_hint('expon', value=1.5, min=0.5 + tiny, max=1000)
+        self.set_param_hint('skew', value=0.0, min=-1000, max=1000)
+        fmt = ("{prefix:s}sigma*sqrt(2**(1/{prefix:s}expon)-1)*pi/arctan2(exp(1)*{prefix:s}expon, {prefix:s}skew)")
+        self.set_param_hint('fwhm', expr=fmt.format(prefix=self.prefix))
+        fmt = ("({prefix:s}amplitude / {prefix:s}sigma) * exp(2 * (real(loggammafcn({prefix:s}expon + {prefix:s}skew * 0.5j)) - loggammafcn({prefix:s}expon)) - betalnfnc({prefix:s}expon-0.5, 0.5) - "
+               "{prefix:s}expon * log1p(square({prefix:s}skew/(2*{prefix:s}expon))) - {prefix:s}skew * arctan(-{prefix:s}skew/(2*{prefix:s}expon)))")
+        self.set_param_hint('height', expr=fmt.format(tiny, prefix=self.prefix))
+        fmt = ("{prefix:s}center-{prefix:s}sigma*{prefix:s}skew/(2*{prefix:s}expon)")
+        self.set_param_hint('position', expr=fmt.format(prefix=self.prefix))
+
+    def guess(self, data, x, negative=False, **kwargs):
+        """Estimate initial model parameter values from data."""
+        pars = guess_from_peak(self, data, x, negative)
+        pars[f'{self.prefix}expon'].set(value=1.5)
+        pars[f'{self.prefix}skew'].set(value=0.0)
         return update_param_vals(pars, self.prefix, **kwargs)
 
     __init__.__doc__ = COMMON_INIT_DOC
@@ -1307,10 +1533,10 @@ class StepModel(Model):
         :nowrap:
 
         \begin{eqnarray*}
-        & f(x; A, \mu, \sigma, {\mathrm{form={}'linear{}'}})  & = A \min{[1, \max{(0, \alpha)}]} \\
+        & f(x; A, \mu, \sigma, {\mathrm{form={}'linear{}'}})  & = A \min{[1, \max{(0, \alpha + 1/2)}]} \\
         & f(x; A, \mu, \sigma, {\mathrm{form={}'arctan{}'}})  & = A [1/2 + \arctan{(\alpha)}/{\pi}] \\
         & f(x; A, \mu, \sigma, {\mathrm{form={}'erf{}'}})     & = A [1 + {\operatorname{erf}}(\alpha)]/2 \\
-        & f(x; A, \mu, \sigma, {\mathrm{form={}'logistic{}'}})& = A [1 - \frac{1}{1 + e^{\alpha}} ]
+        & f(x; A, \mu, \sigma, {\mathrm{form={}'logistic{}'}})& = A \left[1 - \frac{1}{1 + e^{\alpha}} \right]
         \end{eqnarray*}
 
     where :math:`\alpha = (x - \mu)/{\sigma}`.
@@ -1365,10 +1591,10 @@ class RectangleModel(Model):
         :nowrap:
 
         \begin{eqnarray*}
-        &f(x; A, \mu, \sigma, {\mathrm{form={}'linear{}'}})   &= A \{ \min{[1, \max{(0, \alpha_1)}]} + \min{[-1, \max{(0, \alpha_2)}]} \} \\
+        &f(x; A, \mu, \sigma, {\mathrm{form={}'linear{}'}})   &= A \{ \min{[1, \max{(-1, \alpha_1)}]} + \min{[1, \max{(-1, \alpha_2)}]} \}/2 \\
         &f(x; A, \mu, \sigma, {\mathrm{form={}'arctan{}'}})   &= A [\arctan{(\alpha_1)} + \arctan{(\alpha_2)}]/{\pi} \\
-        &f(x; A, \mu, \sigma, {\mathrm{form={}'erf{}'}})      &= A [{\operatorname{erf}}(\alpha_1) + {\operatorname{erf}}(\alpha_2)]/2 \\
-        &f(x; A, \mu, \sigma, {\mathrm{form={}'logistic{}'}}) &= A [1 - \frac{1}{1 + e^{\alpha_1}} - \frac{1}{1 + e^{\alpha_2}} ]
+        &f(x; A, \mu, \sigma, {\mathrm{form={}'erf{}'}})      &= A \left[{\operatorname{erf}}(\alpha_1) + {\operatorname{erf}}(\alpha_2)\right]/2 \\
+        &f(x; A, \mu, \sigma, {\mathrm{form={}'logistic{}'}}) &= A \left[1 - \frac{1}{1 + e^{\alpha_1}} - \frac{1}{1 + e^{\alpha_2}} \right]
         \end{eqnarray*}
 
 
@@ -1524,6 +1750,7 @@ lmfit_models = {'Constant': ConstantModel,
                 'Linear': LinearModel,
                 'Quadratic': QuadraticModel,
                 'Polynomial': PolynomialModel,
+                'Spline': SplineModel,
                 'Gaussian': GaussianModel,
                 'Gaussian-2D': Gaussian2dModel,
                 'Lorentzian': LorentzianModel,
@@ -1531,6 +1758,7 @@ lmfit_models = {'Constant': ConstantModel,
                 'Voigt': VoigtModel,
                 'PseudoVoigt': PseudoVoigtModel,
                 'Moffat': MoffatModel,
+                'Pearson4': Pearson4Model,
                 'Pearson7': Pearson7Model,
                 'StudentsT': StudentsTModel,
                 'Breit-Wigner': BreitWignerModel,
