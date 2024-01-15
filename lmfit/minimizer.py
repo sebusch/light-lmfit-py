@@ -618,7 +618,7 @@ class Minimizer:
         else:
             _par_list = list(fvars)
 
-        self.result._par_list = _par_list
+        self.result._par_list = _par_list #TODO: DOUBLE CHECK; WE PROBABLY DONT NEED TO PASS THIS TO RESULT AT EACH ITERATION
 
         if self.max_nfev is None:
             self.max_nfev = 200000 * (len(fvars) + 1)
@@ -2647,7 +2647,8 @@ class Minimizer:
 
     def nelder_fast(self, params=None, max_nfev=None, **kws):
         result = self.prepare_fit(params=params)
-        result.method = "Nelder-Mead"
+        result.method = "fast_nelder"
+        result.scipy_method = "Nelder-Mead"
         variables = result._init_vals_internal
         params = result.params
         self.set_max_nfev(max_nfev, 2000 * (result.nvarys + 1))
@@ -2655,7 +2656,7 @@ class Minimizer:
         # TODO: INCLUDE OTHER OPTIONS FOR scipy.optimize.minimize(method=’Nelder-Mead’)
         # https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html#scipy.optimize.minimize
         # https://docs.scipy.org/doc/scipy/reference/optimize.minimize-neldermead.html
-        fmin_kws = dict(method=result.method, options={"maxiter": 2 * self.max_nfev})
+        fmin_kws = dict(method=result.scipy_method, options={"maxiter": 2 * self.max_nfev})
         fmin_kws.update(self.kws)
 
         if "maxiter" in kws:
@@ -2667,7 +2668,7 @@ class Minimizer:
         fmin_kws.update(kws)
 
         result.call_kws = fmin_kws
-
+        
         try:
             ret = scipy_minimize(self.penalty_fast, variables, **fmin_kws)
         except AbortFitException:
@@ -2685,7 +2686,7 @@ class Minimizer:
             result.x = np.atleast_1d(result.x)
             result.residual = self.__residual_fast(
                 result.x
-            )  # TODO: check whether we should change it to __residual_fast
+            )  
             result.nfev -= 1
         else:
             result.x = result.last_internal_values
@@ -2693,7 +2694,7 @@ class Minimizer:
             self._abort = False
             result.residual = self.__residual_fast(
                 result.x
-            )  # TODO: check whether we should change it to __residual_fast
+            )  
             result.nfev += 1
 
         # update params after finishing fitting
