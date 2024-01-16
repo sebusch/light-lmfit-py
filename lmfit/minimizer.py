@@ -581,7 +581,7 @@ class Minimizer:
             raise AbortFitException("fit aborted by user.")
         else:
             return coerce_float64(out, nan_policy=self.nan_policy)
-
+           
     def __residual_fast(self, fvars, apply_bounds_transformation=True):
         """Residual function used for leastsq_fast fit.
 
@@ -608,13 +608,12 @@ class Minimizer:
         """
         params = self.result.params
 
-        _par_list = []
         if fvars.shape == ():
             fvars = fvars.reshape((1,))
 
         if apply_bounds_transformation:
-            for name, val in zip(self.result.var_names, fvars):
-                _par_list.append(params[name].from_internal(val))
+            _par_list = [params[name].from_internal(val) for name, val in zip(self.result.var_names, fvars)]
+
         else:
             _par_list = list(fvars)
 
