@@ -2697,8 +2697,8 @@ class Minimizer:
             result.nfev += 1
 
         # update params after finishing fitting
-        for name, val in zip(result.var_names, result._par_list):
-            result.params[name].value = val
+        for name, val in zip(result.var_names, result.x):
+            result.params[name].value = result.params[name].from_internal(val)
         result.params.update_constraints()
 
         result._calculate_statistics()
