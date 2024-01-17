@@ -617,8 +617,6 @@ class Minimizer:
         else:
             _par_list = list(fvars)
 
-        self.result._par_list = _par_list #TODO: DOUBLE CHECK; WE PROBABLY DONT NEED TO PASS THIS TO RESULT AT EACH ITERATION
-
         if self.max_nfev is None:
             self.max_nfev = 200000 * (len(fvars) + 1)
 
