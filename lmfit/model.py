@@ -1559,6 +1559,11 @@ class ModelResult(Minimizer):
         self.user_options = None
         self.init_params = deepcopy(params)
         if fast:
+            if isinstance(model, lmfit.CompositeModel):
+                raise NotImplementedError(
+                    "Fast fitting methods are not available for CompositeModel. Use normal methods instead."
+                )
+
             Minimizer.__init__(
                 self,
                 model._residual_fast,
