@@ -617,8 +617,6 @@ class Minimizer:
         else:
             _par_list = list(fvars)
 
-        self.result._par_list = _par_list #TODO: DOUBLE CHECK; WE PROBABLY DONT NEED TO PASS THIS TO RESULT AT EACH ITERATION
-
         if self.max_nfev is None:
             self.max_nfev = 200000 * (len(fvars) + 1)
 
@@ -1989,6 +1987,11 @@ class Minimizer:
             ier = -1
             errmsg = "Fit aborted."
 
+        # update parameters
+        for name, val in zip(result.var_names, _best):
+            result.params[name].value = result.params[name].from_internal(val) 
+        result.params.update_constraints()
+
         result.nfev -= 1
         if result.nfev >= self.max_nfev:
             result.nfev = self.max_nfev - 1
@@ -2016,11 +2019,6 @@ class Minimizer:
             result.message = self._err_max_evals.format(lskws["maxfev"])
         else:
             result.message = "Tolerance seems to be too small."
-
-        # update parameters
-        for name, val in zip(result.var_names, result._par_list):
-            result.params[name].value = val
-        result.params.update_constraints()
 
         # self.errorbars = error bars were successfully estimated
         result.errorbars = _cov is not None
@@ -2697,8 +2695,8 @@ class Minimizer:
             result.nfev += 1
 
         # update params after finishing fitting
-        for name, val in zip(result.var_names, result._par_list):
-            result.params[name].value = val
+        for name, val in zip(result.var_names, result.x):
+            result.params[name].value = result.params[name].from_internal(val)
         result.params.update_constraints()
 
         result._calculate_statistics()
