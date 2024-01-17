@@ -2018,8 +2018,8 @@ class Minimizer:
             result.message = "Tolerance seems to be too small."
 
         # update parameters
-        for name, val in zip(result.var_names, result._par_list):
-            result.params[name].value = val
+        for name, val in zip(result.var_names, _best):
+            result.params[name].value = result.params[name].from_internal(val) 
         result.params.update_constraints()
 
         # self.errorbars = error bars were successfully estimated
