@@ -12,6 +12,8 @@ import numpy as np
 from scipy.special import erf
 from scipy.stats import t
 
+from numba import njit
+
 import lmfit
 
 from . import Minimizer, Parameter, Parameters, lineshapes
@@ -205,6 +207,9 @@ def coerce_arraylike(x):
             return np.asfarray(x, dtype=np.complex128)
     return x
 
+@njit
+def _numba_op_sutraction(model, data):
+    return model - data
 
 class Model:
     """Create a model from a user-supplied model function."""
@@ -880,7 +885,7 @@ class Model:
                 )
                 raise ValueError(msg)
 
-        diff = model - data
+        diff = _numba_op_sutraction(model, data)
 
         if diff.dtype == complex:
             # data/model are complex
