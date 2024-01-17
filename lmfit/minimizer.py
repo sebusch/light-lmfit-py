@@ -1989,6 +1989,11 @@ class Minimizer:
             ier = -1
             errmsg = "Fit aborted."
 
+        # update parameters
+        for name, val in zip(result.var_names, _best):
+            result.params[name].value = result.params[name].from_internal(val) 
+        result.params.update_constraints()
+
         result.nfev -= 1
         if result.nfev >= self.max_nfev:
             result.nfev = self.max_nfev - 1
@@ -2016,11 +2021,6 @@ class Minimizer:
             result.message = self._err_max_evals.format(lskws["maxfev"])
         else:
             result.message = "Tolerance seems to be too small."
-
-        # update parameters
-        for name, val in zip(result.var_names, _best):
-            result.params[name].value = result.params[name].from_internal(val) 
-        result.params.update_constraints()
 
         # self.errorbars = error bars were successfully estimated
         result.errorbars = _cov is not None
