@@ -845,6 +845,7 @@ class Model:
         model = self.eval_fast(nvars, **kwargs)
 
         # check for NaN at the first iteration
+        if nfev < 2:
             if self.nan_policy == "raise" and not np.all(np.isfinite(model)):
                 msg = (
                     "The model function generated NaN values and the fit "
@@ -959,6 +960,13 @@ class Model:
         # _dic = self.make_funcargs(params, kwargs)
         # return self.func(**_dic)
         return self.func(**self.make_funcargs(params, kwargs))
+
+    def eval_fast(self, nvars, **kwargs):
+        """Fast version of model evaluation.
+        This method is only called when a fast fitter is used.
+        """
+        out = self.func(kwargs["x"], *nvars)
+        return out
 
     @property
     def components(self):
@@ -1153,6 +1161,12 @@ class Model:
 
         if fit_kws is None:
             fit_kws = {}
+
+        # determine the value of kwarg fast passed to ModelResult
+        if method.startswith("fast_"):
+            fast = True
+        else:
+            fast = False
 
         output = ModelResult(
             self,
@@ -1516,6 +1530,11 @@ class ModelResult(Minimizer):
         self.user_options = None
         self.init_params = deepcopy(params)
         if fast:
+            if isinstance(model, lmfit.CompositeModel):
+                raise NotImplementedError(
+                    "Fast fitting methods are not available for CompositeModel. Use normal methods instead."
+                )
+
             Minimizer.__init__(
                 self,
                 model._residual_fast,
@@ -1585,11 +1604,15 @@ class ModelResult(Minimizer):
         self.ci_out = None
         self.userargs = (self.data, self.weights)
         self.userkws.update(kwargs)
-        # self.init_fit = self.model.eval(params=self.params, **self.userkws)
-        _ret = self.minimize(method=self.method)
-        
+        self.init_fit = self.model.eval(
+            params=self.params, **self.userkws
+        )  # TODO: check whether we can comment out this line
+        _ret = self.minimize(
+            method=self.method
+        )  # TODO: check whether all kwargs are set (e.g. via self.kws)
+
         for attr in dir(_ret):
-            if not attr.startswith('_'):
+            if not attr.startswith("_"):
                 try:
                     setattr(self, attr, getattr(_ret, attr))
                 except AttributeError:
@@ -1597,7 +1620,9 @@ class ModelResult(Minimizer):
 
         self.init_values = self.model._make_all_args(self.init_params)
         self.best_values = self.model._make_all_args(_ret.params)
-        # self.best_fit = self.model.eval(params=_ret.params, **self.userkws)
+        self.best_fit = self.model.eval(
+            params=_ret.params, **self.userkws
+        )  # TODO: check whether we can comment out this line
 
     def eval(self, params=None, **kwargs):
         """Evaluate model function.
