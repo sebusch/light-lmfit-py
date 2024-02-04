@@ -676,12 +676,12 @@ class Minimizer:
             fvars = fvars.reshape((1,))
 
         if apply_bounds_transformation:
-            for name, val in zip(self.result.var_names, fvars):
-                _par_list.append(params[name].from_internal(val))
+            _par_list = [
+                params[name].from_internal(val)
+                for name, val in zip(self.result.var_names, fvars)
+            ]
         else:
             _par_list = list(fvars)
-        
-        self.result._par_list = _par_list
 
         if self.max_nfev is None:
             self.max_nfev = 200000 * (len(fvars) + 1)
@@ -716,6 +716,7 @@ class Minimizer:
             raise AbortFitException("fit aborted by user.")
         else:
             # check nan at the first iteration
+            if nfev < 2:
                 out = _nan_policy(np.asarray(out).ravel(), nan_policy=self.nan_policy)
 
             return out
@@ -772,6 +773,20 @@ class Minimizer:
             apply_bounds_transformation = True
 
         r = self.__residual(fvars, apply_bounds_transformation)
+        if isinstance(r, np.ndarray) and r.size > 1:
+            r = self.reduce_fcn(r)
+            if isinstance(r, np.ndarray) and r.size > 1:
+                r = r.sum()
+        return r
+
+    def penalty_fast(self, fvars):
+        """fast version of function penalty"""
+        if self.result.method in ["brute", "shgo", "dual_annealing"]:
+            apply_bounds_transformation = False
+        else:
+            apply_bounds_transformation = True
+
+        r = self.__residual_fast(fvars, apply_bounds_transformation)
         if isinstance(r, np.ndarray) and r.size > 1:
             r = self.reduce_fcn(r)
             if isinstance(r, np.ndarray) and r.size > 1:
@@ -2041,6 +2056,11 @@ class Minimizer:
             ier = -1
             errmsg = "Fit aborted."
 
+        # update parameters
+        for name, val in zip(result.var_names, _best):
+            result.params[name].value = result.params[name].from_internal(val)
+        result.params.update_constraints()
+
         result.nfev -= 1
         if result.nfev >= self.max_nfev:
             result.nfev = self.max_nfev - 1
@@ -2068,11 +2088,6 @@ class Minimizer:
             result.message = self._err_max_evals.format(lskws["maxfev"])
         else:
             result.message = "Tolerance seems to be too small."
-
-        # update parameters
-        for name, val in zip(result.var_names, result._par_list):
-            result.params[name].value = val
-        result.params.update_constraints()
 
         # self.errorbars = error bars were successfully estimated
         result.errorbars = _cov is not None
@@ -2677,6 +2692,78 @@ class Minimizer:
 
         return result
 
+    def nelder_fast(self, params=None, max_nfev=None, **kws):
+        result = self.prepare_fit(params=params)
+        result.method = "fast_nelder"
+        result.scipy_method = "Nelder-Mead"
+        variables = result.init_vals
+        params = result.params
+        self.set_max_nfev(max_nfev, 2000 * (result.nvarys + 1))
+
+        # TODO: INCLUDE OTHER OPTIONS FOR scipy.optimize.minimize(method=’Nelder-Mead’)
+        # https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html#scipy.optimize.minimize
+        # https://docs.scipy.org/doc/scipy/reference/optimize.minimize-neldermead.html
+        fmin_kws = dict(
+            method=result.scipy_method, options={"maxiter": 2 * self.max_nfev}
+        )
+        fmin_kws.update(self.kws)
+
+        if "maxiter" in kws:
+            warnings.warn(
+                maxeval_warning.format("maxiter", thisfuncname()),
+                RuntimeWarning,
+            )
+            kws.pop("maxiter")
+        fmin_kws.update(kws)
+
+        result.call_kws = fmin_kws
+
+        try:
+            ret = scipy_minimize(self.penalty_fast, variables, **fmin_kws)
+        except AbortFitException:
+            pass
+
+        if not result.aborted:
+            if isinstance(ret, dict):
+                for attr, value in ret.items():
+                    setattr(result, attr, value)
+            else:
+                for attr in dir(ret):
+                    if not attr.startswith("_"):
+                        setattr(result, attr, getattr(ret, attr))
+
+            result.x = np.atleast_1d(result.x)
+            result.residual = self.__residual_fast(result.x)
+            result.nfev -= 1
+        else:
+            result.x = result.last_internal_values
+            self.result.nfev -= 2
+            self._abort = False
+            result.residual = self.__residual_fast(result.x)
+            result.nfev += 1
+
+        # update params after finishing fitting
+        for name, val in zip(result.var_names, result.x):
+            result.params[name].value = result.params[name].from_internal(val)
+        result.params.update_constraints()
+
+        result._calculate_statistics()
+
+        # calculate the cov_x and estimate uncertainties/correlations
+        self.result.uvars = None
+        if (
+            not result.aborted
+            and self.calc_covar
+            and HAS_NUMDIFFTOOLS
+            and len(result.residual) > len(result.var_names)
+        ):
+            _covar_ndt = self._calculate_covariance_matrix(result.x)
+            if _covar_ndt is not None:
+                result.covar = self._int2ext_cov_x(_covar_ndt, result.x)
+                self._calculate_uncertainties_correlations()
+
+        return result
+
     def minimize(self, method="leastsq", params=None, **kws):
         """Perform the minimization.
 
@@ -2770,6 +2857,8 @@ class Minimizer:
             function = self.shgo
         elif user_method == "dual_annealing":
             function = self.dual_annealing
+        elif user_method == "fast_nelder":
+            function = self.nelder_fast
         else:
             function = self.scalar_minimize
             for key, val in SCALAR_METHODS.items():
