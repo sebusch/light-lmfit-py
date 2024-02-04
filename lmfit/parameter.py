@@ -13,8 +13,8 @@ from .jsonutils import decode4js, encode4js
 from .lineshapes import tiny
 from .printfuncs import params_html_table
 
-SCIPY_FUNCTIONS = {'gamfcn': scipy.special.gamma}
-for fnc_name in ('erf', 'erfc', 'wofz'):
+SCIPY_FUNCTIONS = {"gamfcn": scipy.special.gamma}
+for fnc_name in ("erf", "erfc", "wofz"):
     SCIPY_FUNCTIONS[fnc_name] = getattr(scipy.special, fnc_name)
 
 
@@ -110,18 +110,19 @@ class Parameters(dict):
         _pars = self.__class__()
 
         # find the symbols that were added by users, not during construction
-        unique_symbols = {key: self._asteval.symtable[key]
-                          for key in self._asteval.user_defined_symbols()}
+        unique_symbols = {
+            key: self._asteval.symtable[key]
+            for key in self._asteval.user_defined_symbols()
+        }
         _pars._asteval.symtable.update(unique_symbols)
 
         # we're just about to add a lot of Parameter objects to the newly
         parameter_list = []
         for key, par in self.items():
             if isinstance(par, Parameter):
-                param = Parameter(name=par.name,
-                                  value=par.value,
-                                  min=par.min,
-                                  max=par.max)
+                param = Parameter(
+                    name=par.name, value=par.value, min=par.min, max=par.max
+                )
                 param.vary = par.vary
                 param.brute_step = par.brute_step
                 param.stderr = par.stderr
@@ -174,11 +175,11 @@ class Parameters(dict):
 
         # find the symbols from _asteval.symtable, that need to be remembered.
         sym_unique = self._asteval.user_defined_symbols()
-        unique_symbols = {key: deepcopy(self._asteval.symtable[key])
-                          for key in sym_unique}
+        unique_symbols = {
+            key: deepcopy(self._asteval.symtable[key]) for key in sym_unique
+        }
 
-        return self.__class__, (), {'unique_symbols': unique_symbols,
-                                    'params': params}
+        return self.__class__, (), {"unique_symbols": unique_symbols, "params": params}
 
     def __setstate__(self, state):
         """Unpickle a Parameters instance.
@@ -201,18 +202,18 @@ class Parameters(dict):
         # them.
 
         symtab = self._asteval.symtable
-        for key, val in state['unique_symbols'].items():
+        for key, val in state["unique_symbols"].items():
             if key not in symtab:
                 symtab[key] = val
 
         # then add all the parameters
-        self.add_many(*state['params'])
+        self.add_many(*state["params"])
 
     def __repr__(self):
         """__repr__ from OrderedDict."""
         if not self:
-            return f'{self.__class__.__name__}()'
-        return f'{self.__class__.__name__}({list(self.items())!r})'
+            return f"{self.__class__.__name__}()"
+        return f"{self.__class__.__name__}({list(self.items())!r})"
 
     def eval(self, expr):
         """Evaluate a statement using the `asteval` Interpreter.
@@ -237,8 +238,7 @@ class Parameters(dict):
         This method ensures that dependencies are evaluated as needed.
 
         """
-        requires_update = {name for name, par in self.items() if par._expr is
-                           not None}
+        requires_update = {name for name, par in self.items() if par._expr is not None}
         updated_tracker = set(requires_update)
 
         def _update_param(name):
@@ -284,9 +284,14 @@ class Parameters(dict):
         s += "    })\n"
         return s
 
-    def pretty_print(self, oneline=False, colwidth=8, precision=4, fmt='g',
-                     columns=['value', 'min', 'max', 'stderr', 'vary', 'expr',
-                              'brute_step']):
+    def pretty_print(
+        self,
+        oneline=False,
+        colwidth=8,
+        precision=4,
+        fmt="g",
+        columns=["value", "min", "max", "stderr", "vary", "expr", "brute_step"],
+    ):
         """Pretty-print of parameters data.
 
         Parameters
@@ -314,33 +319,43 @@ class Parameters(dict):
             return
 
         name_len = max(len(s) for s in self)
-        allcols = ['name'] + columns
-        title = '{:{name_len}} ' + len(columns) * ' {:>{n}}'
+        allcols = ["name"] + columns
+        title = "{:{name_len}} " + len(columns) * " {:>{n}}"
         print(title.format(*allcols, name_len=name_len, n=colwidth).title())
-        numstyle = '{%s:>{n}.{p}{f}}'  # format for numeric columns
-        otherstyles = dict(name='{name:<{name_len}} ', stderr='{stderr!s:>{n}}',
-                           vary='{vary!s:>{n}}', expr='{expr!s:>{n}}',
-                           brute_step='{brute_step!s:>{n}}')
-        line = ' '.join(otherstyles.get(k, numstyle % k) for k in allcols)
+        numstyle = "{%s:>{n}.{p}{f}}"  # format for numeric columns
+        otherstyles = dict(
+            name="{name:<{name_len}} ",
+            stderr="{stderr!s:>{n}}",
+            vary="{vary!s:>{n}}",
+            expr="{expr!s:>{n}}",
+            brute_step="{brute_step!s:>{n}}",
+        )
+        line = " ".join(otherstyles.get(k, numstyle % k) for k in allcols)
         for name, values in sorted(self.items()):
             pvalues = {k: getattr(values, k) for k in columns}
-            pvalues['name'] = name
+            pvalues["name"] = name
             # stderr is a special case: it is either numeric or None (i.e. str)
-            if 'stderr' in columns and pvalues['stderr'] is not None:
-                pvalues['stderr'] = (numstyle % '').format(
-                    pvalues['stderr'], n=colwidth, p=precision, f=fmt)
-            elif 'brute_step' in columns and pvalues['brute_step'] is not None:
-                pvalues['brute_step'] = (numstyle % '').format(
-                    pvalues['brute_step'], n=colwidth, p=precision, f=fmt)
-            print(line.format(name_len=name_len, n=colwidth, p=precision,
-                              f=fmt, **pvalues))
+            if "stderr" in columns and pvalues["stderr"] is not None:
+                pvalues["stderr"] = (numstyle % "").format(
+                    pvalues["stderr"], n=colwidth, p=precision, f=fmt
+                )
+            elif "brute_step" in columns and pvalues["brute_step"] is not None:
+                pvalues["brute_step"] = (numstyle % "").format(
+                    pvalues["brute_step"], n=colwidth, p=precision, f=fmt
+                )
+            print(
+                line.format(
+                    name_len=name_len, n=colwidth, p=precision, f=fmt, **pvalues
+                )
+            )
 
     def _repr_html_(self):
         """Return a HTML representation of parameters data."""
         return params_html_table(self)
 
-    def add(self, name, value=None, vary=True, min=-inf, max=inf, expr=None,
-            brute_step=None):
+    def add(
+        self, name, value=None, vary=True, min=-inf, max=inf, expr=None, brute_step=None
+    ):
         """Add a Parameter.
 
         Parameters
@@ -383,9 +398,18 @@ class Parameters(dict):
         if isinstance(name, Parameter):
             self.__setitem__(name.name, name)
         else:
-            self.__setitem__(name, Parameter(value=value, name=name, vary=vary,
-                                             min=min, max=max, expr=expr,
-                                             brute_step=brute_step))
+            self.__setitem__(
+                name,
+                Parameter(
+                    value=value,
+                    name=name,
+                    vary=vary,
+                    min=min,
+                    max=max,
+                    expr=expr,
+                    brute_step=brute_step,
+                ),
+            )
 
     def add_many(self, *parlist):
         """Add many parameters, using a sequence of tuples.
@@ -455,10 +479,10 @@ class Parameters(dict):
         """
         params = [p.__getstate__() for p in self.values()]
         sym_unique = self._asteval.user_defined_symbols()
-        unique_symbols = {key: encode4js(deepcopy(self._asteval.symtable[key]))
-                          for key in sym_unique}
-        return json.dumps({'unique_symbols': unique_symbols,
-                           'params': params}, **kws)
+        unique_symbols = {
+            key: encode4js(deepcopy(self._asteval.symtable[key])) for key in sym_unique
+        }
+        return json.dumps({"unique_symbols": unique_symbols, "params": params}, **kws)
 
     def loads(self, s, **kws):
         """Load Parameters from a JSON string.
@@ -486,14 +510,15 @@ class Parameters(dict):
         self.clear()
 
         tmp = json.loads(s, **kws)
-        unique_symbols = {key: decode4js(tmp['unique_symbols'][key]) for key
-                          in tmp['unique_symbols']}
+        unique_symbols = {
+            key: decode4js(tmp["unique_symbols"][key]) for key in tmp["unique_symbols"]
+        }
 
-        state = {'unique_symbols': unique_symbols, 'params': []}
-        for parstate in tmp['params']:
-            _par = Parameter(name='')
+        state = {"unique_symbols": unique_symbols, "params": []}
+        for parstate in tmp["params"]:
+            _par = Parameter(name="")
             _par.__setstate__(parstate)
-            state['params'].append(_par)
+            state["params"].append(_par)
         self.__setstate__(state)
         return self
 
@@ -566,8 +591,17 @@ class Parameter:
 
     """
 
-    def __init__(self, name, value=None, vary=True, min=-inf, max=inf,
-                 expr=None, brute_step=None, user_data=None):
+    def __init__(
+        self,
+        name,
+        value=None,
+        vary=True,
+        min=-inf,
+        max=inf,
+        expr=None,
+        brute_step=None,
+        user_data=None,
+    ):
         """
         Parameters
         ----------
@@ -622,8 +656,9 @@ class Parameter:
         self._val = value
         self._init_bounds()
 
-    def set(self, value=None, vary=None, min=None, max=None, expr=None,
-            brute_step=None):
+    def set(
+        self, value=None, vary=None, min=None, max=None, expr=None, brute_step=None
+    ):
         """Set or update Parameter attributes.
 
         Parameters
@@ -673,7 +708,7 @@ class Parameter:
         if vary is not None:
             self.vary = vary
             if vary:
-                self.__set_expression('')
+                self.__set_expression("")
 
         if min is not None:
             self.min = min
@@ -717,15 +752,35 @@ class Parameter:
 
     def __getstate__(self):
         """Get state for pickle."""
-        return (self.name, self.value, self.vary, self.expr, self.min,
-                self.max, self.brute_step, self.stderr, self.correl,
-                self.init_value, self.user_data)
+        return (
+            self.name,
+            self.value,
+            self.vary,
+            self.expr,
+            self.min,
+            self.max,
+            self.brute_step,
+            self.stderr,
+            self.correl,
+            self.init_value,
+            self.user_data,
+        )
 
     def __setstate__(self, state):
         """Set state for pickle."""
-        (self.name, _value, self.vary, self.expr, self.min, self.max,
-         self.brute_step, self.stderr, self.correl, self.init_value,
-         self.user_data) = state
+        (
+            self.name,
+            _value,
+            self.vary,
+            self.expr,
+            self.min,
+            self.max,
+            self.brute_step,
+            self.stderr,
+            self.correl,
+            self.init_value,
+            self.user_data,
+        ) = state
         self._expr_ast = None
         self._expr_eval = None
         self._expr_deps = []
@@ -810,9 +865,9 @@ class Parameter:
         if self.min == -inf and self.max == inf:
             return 1.0
         if self.max == inf:
-            return val / sqrt(val*val + 1)
+            return val / sqrt(val * val + 1)
         if self.min == -inf:
-            return -val / sqrt(val*val + 1)
+            return -val / sqrt(val * val + 1)
         return cos(val) * (self.max - self.min) / 2.0
 
     def _getval(self):
@@ -845,7 +900,7 @@ class Parameter:
                 self._val = self.max
             elif self._val < self.min:
                 self._val = self.min
-        if not hasattr(self, '_expr_eval'):
+        if not hasattr(self, "_expr_eval"):
             self._expr_eval = None
         if self._expr_eval is not None:
             self._expr_eval.symtable[self.name] = self._val
@@ -865,12 +920,12 @@ class Parameter:
         self.__set_expression(val)
 
     def __set_expression(self, val):
-        if val == '':
+        if val == "":
             val = None
         self._expr = val
         if val is not None:
             self.vary = False
-        if not hasattr(self, '_expr_eval'):
+        if not hasattr(self, "_expr_eval"):
             self._expr_eval = None
         if val is None:
             self._expr_ast = None
