@@ -7,6 +7,8 @@ from asteval import Interpreter, get_ast_names, valid_symbol_name
 from numpy import arcsin, array, cos, inf, isclose, sin, sqrt
 import scipy.special
 
+from numba import njit
+
 from .jsonutils import decode4js, encode4js
 from .lineshapes import tiny
 from .printfuncs import params_html_table
@@ -20,6 +22,23 @@ def check_ast_errors(expr_eval):
     """Check for errors derived from asteval."""
     if len(expr_eval.error) > 0:
         expr_eval.raise_exception(None)
+
+
+# define functions to re-generate actual value from internal value
+# the expressions are copied from Parameter.setup_bounds (upstream version)
+@njit
+def _from_internal_lower_bound(min, val):
+    return min - 1.0 + sqrt(val * val + 1)
+
+
+@njit
+def _from_internal_upper_bound(max, val):
+    return max + 1 - sqrt(val * val + 1)
+
+
+@njit
+def _from_internal_bound2(min, max, val):
+    return min + (sin(val) + 1) * (max - min) / 2.0
 
 
 class Parameters(dict):
@@ -759,15 +778,16 @@ class Parameter:
             self.from_internal = lambda val: val
             _val = self._val
         elif self.max == inf:
-            self.from_internal = lambda val: self.min - 1.0 + sqrt(val*val + 1)
-            _val = sqrt((self._val - self.min + 1.0)**2 - 1)
+            self.from_internal = lambda val: _from_internal_lower_bound(self.min, val)
+            _val = sqrt((self._val - self.min + 1.0) ** 2 - 1)
         elif self.min == -inf:
-            self.from_internal = lambda val: self.max + 1 - sqrt(val*val + 1)
-            _val = sqrt((self.max - self._val + 1.0)**2 - 1)
+            self.from_internal = lambda val: _from_internal_upper_bound(self.max, val)
+            _val = sqrt((self.max - self._val + 1.0) ** 2 - 1)
         else:
-            self.from_internal = lambda val: self.min + (sin(val) + 1) * \
-                                 (self.max - self.min) / 2.0
-            _val = arcsin(2*(self._val - self.min)/(self.max - self.min) - 1)
+            self.from_internal = lambda val: _from_internal_bound2(
+                self.min, self.max, val
+            )
+            _val = arcsin(2 * (self._val - self.min) / (self.max - self.min) - 1)
         if abs(_val) < tiny:
             _val = 0.0
         return _val
