@@ -14,6 +14,7 @@ Original copyright:
 See LICENSE for more complete authorship information and license.
 
 """
+
 from collections import namedtuple
 from copy import deepcopy
 import inspect
@@ -289,13 +290,17 @@ class MinimizerResult:
             return None
 
         if not HAS_PANDAS:
-            raise NotImplementedError("Please install Pandas to see the " "flattened chain")
+            raise NotImplementedError(
+                "Please install Pandas to see the " "flattened chain"
+            )
         if len(self.chain.shape) == 4:
             return pd.DataFrame(
                 self.chain[0, ...].reshape((-1, self.nvarys)), columns=self.var_names
             )
         elif len(self.chain.shape) == 3:
-            return pd.DataFrame(self.chain.reshape((-1, self.nvarys)), columns=self.var_names)
+            return pd.DataFrame(
+                self.chain.reshape((-1, self.nvarys)), columns=self.var_names
+            )
 
     def show_candidates(self, candidate_nmb="all"):
         """Show pretty_print() representation of candidates.
@@ -316,7 +321,9 @@ class MinimizerResult:
                     print(f"\nCandidate #{i + 1}, chisqr = {candidate.score:.3f}")
                     candidate.params.pretty_print()
             elif candidate_nmb < 1 or candidate_nmb > len(self.candidates):
-                raise ValueError(f"'candidate_nmb' should be between 1 and {len(self.candidates)}.")
+                raise ValueError(
+                    f"'candidate_nmb' should be between 1 and {len(self.candidates)}."
+                )
             else:
                 candidate = self.candidates[candidate_nmb - 1]
                 print(f"\nCandidate #{candidate_nmb}, chisqr = {candidate.score:.3f}")
@@ -348,14 +355,18 @@ class MinimizerResult:
 
     def _repr_html_(self, show_correl=True, min_correl=0.1):
         """Return a HTML representation of parameters data."""
-        report = fitreport_html_table(self, show_correl=show_correl, min_correl=min_correl)
+        report = fitreport_html_table(
+            self, show_correl=show_correl, min_correl=min_correl
+        )
         return f"<h2>Fit Result</h2> {report}"
 
 
 class Minimizer:
     """A general minimizer for curve fitting and optimization."""
 
-    _err_nonparam = "params must be a minimizer.Parameters() instance or" " list of Parameters()"
+    _err_nonparam = (
+        "params must be a minimizer.Parameters() instance or" " list of Parameters()"
+    )
     _err_max_evals = (
         "Too many function calls (max set to {:i})! Use:"
         " minimize(func, params, ..., max_nfev=NNN)"
@@ -565,23 +576,29 @@ class Minimizer:
             m = f"number of function evaluations > {self.max_nfev}"
             self.result.message = f"Fit aborted: {m}"
             self.result.success = False
-            raise AbortFitException(f"fit aborted: too many function evaluations {self.max_nfev}")
+            raise AbortFitException(
+                f"fit aborted: too many function evaluations {self.max_nfev}"
+            )
 
         out = self.userfcn(params, *self.userargs, **self.userkws)
 
         if callable(self.iter_cb):
-            abort = self.iter_cb(params, self.result.nfev, out, *self.userargs, **self.userkws)
+            abort = self.iter_cb(
+                params, self.result.nfev, out, *self.userargs, **self.userkws
+            )
             self._abort = self._abort or abort
 
         if self._abort:
             self.result.residual = out
             self.result.aborted = True
-            self.result.message = "Fit aborted by user callback. Could not estimate error-bars."
+            self.result.message = (
+                "Fit aborted by user callback. Could not estimate error-bars."
+            )
             self.result.success = False
             raise AbortFitException("fit aborted by user.")
         else:
             return coerce_float64(out, nan_policy=self.nan_policy)
-           
+
     def __residual_fast(self, fvars, apply_bounds_transformation=True):
         """Residual function used for leastsq_fast fit.
 
@@ -612,7 +629,10 @@ class Minimizer:
             fvars = fvars.reshape((1,))
 
         if apply_bounds_transformation:
-            _par_list = [params[name].from_internal(val) for name, val in zip(self.result.var_names, fvars)]
+            _par_list = [
+                params[name].from_internal(val)
+                for name, val in zip(self.result.var_names, fvars)
+            ]
 
         else:
             _par_list = list(fvars)
@@ -628,18 +648,24 @@ class Minimizer:
             m = f"number of function evaluations > {self.max_nfev}"
             self.result.message = f"Fit aborted: {m}"
             self.result.success = False
-            raise AbortFitException(f"fit aborted: too many function evaluations {self.max_nfev}")
+            raise AbortFitException(
+                f"fit aborted: too many function evaluations {self.max_nfev}"
+            )
 
         out = self.userfcn(_par_list, *self.userargs, nfev, **self.userkws)
 
         if callable(self.iter_cb):
-            abort = self.iter_cb(params, self.result.nfev, out, *self.userargs, **self.userkws)
+            abort = self.iter_cb(
+                params, self.result.nfev, out, *self.userargs, **self.userkws
+            )
             self._abort = self._abort or abort
 
         if self._abort:
             self.result.residual = out
             self.result.aborted = True
-            self.result.message = "Fit aborted by user callback. Could not estimate error-bars."
+            self.result.message = (
+                "Fit aborted by user callback. Could not estimate error-bars."
+            )
             self.result.success = False
             raise AbortFitException("fit aborted by user.")
         else:
@@ -842,7 +868,9 @@ class Minimizer:
             Covariance matrix if successful, otherwise None.
 
         """
-        warnings.filterwarnings(action="ignore", module="scipy", message="^internal gelsd")
+        warnings.filterwarnings(
+            action="ignore", module="scipy", message="^internal gelsd"
+        )
 
         nfev = deepcopy(self.result.nfev)
         best_vals = self.result.params.valuesdict()
@@ -1068,7 +1096,8 @@ class Minimizer:
             for par in params.values():
                 if par.vary and not (np.isfinite(par.min) and np.isfinite(par.max)):
                     raise ValueError(
-                        "differential_evolution requires finite " "bound for all varying parameters"
+                        "differential_evolution requires finite "
+                        "bound for all varying parameters"
                     )
 
             _bounds = [(-np.pi / 2.0, np.pi / 2.0)] * len(variables)
@@ -1242,7 +1271,8 @@ class Minimizer:
                 lnprob *= -0.5
             else:
                 raise ValueError(
-                    "float_behaviour must be either 'posterior' " "or 'chi2' " + float_behavior
+                    "float_behaviour must be either 'posterior' "
+                    "or 'chi2' " + float_behavior
                 )
         return lnprob
 
@@ -1446,7 +1476,8 @@ class Minimizer:
         if reuse_sampler:
             if not hasattr(self, "sampler") or not hasattr(self, "_lastpos"):
                 raise ValueError(
-                    "You wanted to use an existing sampler, but " "it hasn't been created yet"
+                    "You wanted to use an existing sampler, but "
+                    "it hasn't been created yet"
                 )
             if len(self._lastpos.shape) == 2:
                 nwalkers = self._lastpos.shape[0]
@@ -1566,11 +1597,15 @@ class Minimizer:
 
         # now do a production run, sampling all the time
         try:
-            output = self.sampler.run_mcmc(p0, steps, progress=progress, **run_mcmc_kwargs)
+            output = self.sampler.run_mcmc(
+                p0, steps, progress=progress, **run_mcmc_kwargs
+            )
             self._lastpos = output.coords
         except AbortFitException:
             result.aborted = True
-            result.message = "Fit aborted by user callback. Could not estimate error-bars."
+            result.message = (
+                "Fit aborted by user callback. Could not estimate error-bars."
+            )
             result.success = False
             result.nfev = self.result.nfev
 
@@ -1611,7 +1646,9 @@ class Minimizer:
 
         # Calculate the residual with the "best fit" parameters
         out = self.userfcn(params, *self.userargs, **self.userkws)
-        result.residual = coerce_float64(out, nan_policy=self.nan_policy, handle_inf=False)
+        result.residual = coerce_float64(
+            out, nan_policy=self.nan_policy, handle_inf=False
+        )
 
         # If uncertainty was automatically estimated, weight the residual properly
         if not is_weighted and result.residual.size > 1 and "__lnsigma" in params:
@@ -1814,7 +1851,9 @@ class Minimizer:
         )
 
         if "maxfev" in kws:
-            warnings.warn(maxeval_warning.format("maxfev", thisfuncname()), RuntimeWarning)
+            warnings.warn(
+                maxeval_warning.format("maxfev", thisfuncname()), RuntimeWarning
+            )
             kws.pop("maxfev")
 
         lskws.update(self.kws)
@@ -1989,7 +2028,7 @@ class Minimizer:
 
         # update parameters
         for name, val in zip(result.var_names, _best):
-            result.params[name].value = result.params[name].from_internal(val) 
+            result.params[name].value = result.params[name].from_internal(val)
         result.params.update_constraints()
 
         result.nfev -= 1
@@ -2214,8 +2253,12 @@ class Minimizer:
 
         varying = np.asarray([par.vary for par in self.params.values()])
         replace_none = lambda x, sign: sign * np.inf if x is None else x
-        lower_bounds = np.asarray([replace_none(i.min, -1) for i in self.params.values()])[varying]
-        upper_bounds = np.asarray([replace_none(i.max, 1) for i in self.params.values()])[varying]
+        lower_bounds = np.asarray(
+            [replace_none(i.min, -1) for i in self.params.values()]
+        )[varying]
+        upper_bounds = np.asarray(
+            [replace_none(i.max, 1) for i in self.params.values()]
+        )[varying]
         value = np.asarray([i.value for i in self.params.values()])[varying]
         stepsize = np.asarray([i.brute_step for i in self.params.values()])[varying]
 
@@ -2299,7 +2342,9 @@ class Minimizer:
                 result.candidates.append(Candidate(params=pars, score=data[1]))
 
             result.params = result.candidates[0].params
-            result.residual = self.__residual(result.brute_x0, apply_bounds_transformation=False)
+            result.residual = self.__residual(
+                result.brute_x0, apply_bounds_transformation=False
+            )
             result.nfev = len(result.brute_Jout.ravel())
         elif result.nfev > self.max_nfev - 5:
             result.nfev -= 2
@@ -2511,7 +2556,9 @@ class Minimizer:
         shgo_kws.update(kws)
 
         varying = np.asarray([par.vary for par in self.params.values()])
-        bounds = np.asarray([(par.min, par.max) for par in self.params.values()])[varying]
+        bounds = np.asarray([(par.min, par.max) for par in self.params.values()])[
+            varying
+        ]
         result.call_kws = shgo_kws
         try:
             ret = scipy_shgo(self.penalty, bounds, **shgo_kws)
@@ -2603,10 +2650,14 @@ class Minimizer:
             da_kws.update({"minimizer_kwargs": da_kws.pop("local_search_options")})
 
         varying = np.asarray([par.vary for par in self.params.values()])
-        bounds = np.asarray([(par.min, par.max) for par in self.params.values()])[varying]
+        bounds = np.asarray([(par.min, par.max) for par in self.params.values()])[
+            varying
+        ]
 
         if not np.all(np.isfinite(bounds)):
-            raise ValueError("dual_annealing requires finite bounds for all" " varying parameters")
+            raise ValueError(
+                "dual_annealing requires finite bounds for all" " varying parameters"
+            )
         result.call_kws = da_kws
         try:
             ret = scipy_dual_annealing(self.penalty, bounds, **da_kws)
@@ -2653,7 +2704,9 @@ class Minimizer:
         # TODO: INCLUDE OTHER OPTIONS FOR scipy.optimize.minimize(method=’Nelder-Mead’)
         # https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html#scipy.optimize.minimize
         # https://docs.scipy.org/doc/scipy/reference/optimize.minimize-neldermead.html
-        fmin_kws = dict(method=result.scipy_method, options={"maxiter": 2 * self.max_nfev})
+        fmin_kws = dict(
+            method=result.scipy_method, options={"maxiter": 2 * self.max_nfev}
+        )
         fmin_kws.update(self.kws)
 
         if "maxiter" in kws:
@@ -2665,7 +2718,7 @@ class Minimizer:
         fmin_kws.update(kws)
 
         result.call_kws = fmin_kws
-        
+
         try:
             ret = scipy_minimize(self.penalty_fast, variables, **fmin_kws)
         except AbortFitException:
@@ -2681,17 +2734,13 @@ class Minimizer:
                         setattr(result, attr, getattr(ret, attr))
 
             result.x = np.atleast_1d(result.x)
-            result.residual = self.__residual_fast(
-                result.x
-            )  
+            result.residual = self.__residual_fast(result.x)
             result.nfev -= 1
         else:
             result.x = result.last_internal_values
             self.result.nfev -= 2
             self._abort = False
-            result.residual = self.__residual_fast(
-                result.x
-            )  
+            result.residual = self.__residual_fast(result.x)
             result.nfev += 1
 
         # update params after finishing fitting
@@ -2814,7 +2863,9 @@ class Minimizer:
         else:
             function = self.scalar_minimize
             for key, val in SCALAR_METHODS.items():
-                if key.lower().startswith(user_method) or val.lower().startswith(user_method):
+                if key.lower().startswith(user_method) or val.lower().startswith(
+                    user_method
+                ):
                     kwargs["method"] = val
         return function(**kwargs)
 
@@ -2834,10 +2885,14 @@ def _make_random_gen(seed):
         return np.random.RandomState(seed)
     if isinstance(seed, np.random.RandomState):
         return seed
-    raise ValueError(f"{seed:r} cannot be used to seed a numpy.random.RandomState" " instance")
+    raise ValueError(
+        f"{seed:r} cannot be used to seed a numpy.random.RandomState" " instance"
+    )
 
 
-def coerce_float64(arr, nan_policy="raise", handle_inf=True, ravel=True, ravel_order="C"):
+def coerce_float64(
+    arr, nan_policy="raise", handle_inf=True, ravel=True, ravel_order="C"
+):
     """coerce array-like objects to be a float64 ndarrays, usually forcing to 1D arrays.
 
     also handles behaviour when array contains ``numpy.nan`` or ``numpy.inf``.
@@ -2907,7 +2962,8 @@ def coerce_float64(arr, nan_policy="raise", handle_inf=True, ravel=True, ravel_o
             # sum things that are not numbers (e.g. as in the function `mode`).
             contains_nan = False
             warnings.warn(
-                "The input array could not be checked for NaNs. " "NaNs will be ignored.",
+                "The input array could not be checked for NaNs. "
+                "NaNs will be ignored.",
                 RuntimeWarning,
             )
 
@@ -2927,7 +2983,9 @@ def coerce_float64(arr, nan_policy="raise", handle_inf=True, ravel=True, ravel_o
 # This change happened in June, 2023, v 1.2.1, so this function can removed
 # sometime in 2024, or after v 1.3.
 def _nan_policy(arr, nan_policy="raise", handle_inf=True, **kws):
-    warnings.warn("`_nan_policy` has been replaced with coerce_float64`", DeprecationWarning)
+    warnings.warn(
+        "`_nan_policy` has been replaced with coerce_float64`", DeprecationWarning
+    )
     return coerce_float64(arr, nan_policy=nan_policy, handle_inf=handle_inf, **kws)
 
 
