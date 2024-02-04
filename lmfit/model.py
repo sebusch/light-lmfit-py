@@ -39,6 +39,7 @@ def _align(var, mask, data):
 
 try:
     import matplotlib  # noqa: F401
+
     _HAS_MATPLOTLIB = True
 except Exception:
     _HAS_MATPLOTLIB = False
@@ -46,13 +47,16 @@ except Exception:
 
 def _ensureMatplotlib(function):
     if _HAS_MATPLOTLIB:
+
         @wraps(function)
         def wrapper(*args, **kws):
             return function(*args, **kws)
+
         return wrapper
 
     def no_op(*args, **kwargs):
-        print('matplotlib module is required for plotting the results')
+        print("matplotlib module is required for plotting the results")
+
     return no_op
 
 
@@ -70,7 +74,7 @@ def get_reducer(option):
         See docstring for `reducer` below.
 
     """
-    if option not in ['real', 'imag', 'abs', 'angle']:
+    if option not in ["real", "imag", "abs", "angle"]:
         raise ValueError(f"Invalid option ('{option}') for function 'propagate_err'.")
 
     def reducer(array):
@@ -98,6 +102,7 @@ def get_reducer(option):
             parsed_array = array
 
         return parsed_array
+
     return reducer
 
 
@@ -139,7 +144,7 @@ def propagate_err(z, dz, option):
     ``numpy.abs(dz)`` for that value.
 
     """
-    if option not in ['real', 'imag', 'abs', 'angle']:
+    if option not in ["real", "imag", "abs", "angle"]:
         raise ValueError(f"Invalid option ('{option}') for function 'propagate_err'.")
 
     if not z.shape == dz.shape:
@@ -150,13 +155,13 @@ def propagate_err(z, dz, option):
         # if uncertainties are real, apply them equally to
         # real and imaginary parts
         if all(np.isreal(dz)):
-            dz = dz+1j*dz
+            dz = dz + 1j * dz
 
-        if option == 'real':
+        if option == "real":
             err = np.real(dz)
-        elif option == 'imag':
+        elif option == "imag":
             err = np.imag(dz)
-        elif option in ['abs', 'angle']:
+        elif option in ["abs", "angle"]:
             rz = np.real(z)
             iz = np.imag(z)
 
@@ -164,20 +169,21 @@ def propagate_err(z, dz, option):
             idz = np.imag(dz)
 
             # Don't spit out warnings for divide by zero. Will fix these later.
-            with np.errstate(divide='ignore', invalid='ignore'):
-
-                if option == 'abs':
+            with np.errstate(divide="ignore", invalid="ignore"):
+                if option == "abs":
                     # Standard error propagation for abs = sqrt(re**2 + im**2)
-                    err = np.true_divide(np.sqrt((iz*idz)**2+(rz*rdz)**2),
-                                         np.abs(z))
+                    err = np.true_divide(
+                        np.sqrt((iz * idz) ** 2 + (rz * rdz) ** 2), np.abs(z)
+                    )
 
                     # For abs = 0, error is +/- abs(rdz + j idz)
                     err[err == np.inf] = np.abs(dz)[err == np.inf]
 
-                if option == 'angle':
+                if option == "angle":
                     # Standard error propagation for angle = arctan(im/re)
-                    err = np.true_divide(np.sqrt((rz*idz)**2+(iz*rdz)**2),
-                                         np.abs(z)**2)
+                    err = np.true_divide(
+                        np.sqrt((rz * idz) ** 2 + (iz * rdz) ** 2), np.abs(z) ** 2
+                    )
 
                     # For abs = 0, error is +/- pi (i.e. the whole circle)
                     err[err == np.inf] = np.pi
@@ -190,15 +196,23 @@ def propagate_err(z, dz, option):
 class Model:
     """Create a model from a user-supplied model function."""
 
-    _forbidden_args = ('data', 'weights', 'params')
+    _forbidden_args = ("data", "weights", "params")
     _invalid_ivar = "Invalid independent variable name ('%s') for function %s"
     _invalid_par = "Invalid parameter name ('%s') for function %s"
     _invalid_hint = "unknown parameter hint '%s' for param '%s'"
-    _hint_names = ('value', 'vary', 'min', 'max', 'expr')
+    _hint_names = ("value", "vary", "min", "max", "expr")
     valid_forms = ()
 
-    def __init__(self, func, independent_vars=None, param_names=None,
-                 nan_policy='raise', prefix='', name=None, **kws):
+    def __init__(
+        self,
+        func,
+        independent_vars=None,
+        param_names=None,
+        nan_policy="raise",
+        prefix="",
+        name=None,
+        **kws,
+    ):
         """
         The model function will normally take an independent variable
         (generally, the first argument) and a series of arguments that are
@@ -277,7 +291,7 @@ class Model:
         self._parse_params()
         if self.independent_vars is None:
             self.independent_vars = []
-        if name is None and hasattr(self.func, '__name__'):
+        if name is None and hasattr(self.func, "__name__"):
             name = self.func.__name__
         self._name = name
 
@@ -303,11 +317,19 @@ class Model:
         funcdef = None
         if HAS_DILL:
             funcdef = self.func
-        if self.func.__name__ == '_eval':
+        if self.func.__name__ == "_eval":
             funcdef = self.expr
-        state = (self.func.__name__, funcdef, self._name, self._prefix,
-                 self.independent_vars, self._param_root_names,
-                 self.param_hints, self.nan_policy, self.opts)
+        state = (
+            self.func.__name__,
+            funcdef,
+            self._name,
+            self._prefix,
+            self.independent_vars,
+            self._param_root_names,
+            self.param_hints,
+            self.nan_policy,
+            self.opts,
+        )
         return (state, None, None)
 
     def _set_state(self, state, funcdefs=None):
@@ -465,7 +487,7 @@ class Model:
         #   kw_args: dict of keyword arguments with default values
         #   keywords_:  name of **kws argument or None
         # 1. limited support for asteval functions as the model functions:
-        if hasattr(self.func, 'argnames') and hasattr(self.func, 'kwargs'):
+        if hasattr(self.func, "argnames") and hasattr(self.func, "kwargs"):
             pos_args = self.func.argnames[:]
             keywords_ = None
             kw_args = {}
@@ -507,8 +529,7 @@ class Model:
         if self._param_root_names is None:
             self._param_root_names = pos_args[:]
             for key, val in kw_args.items():
-                if (not isinstance(val, bool) and
-                        isinstance(val, (float, int))):
+                if not isinstance(val, bool) and isinstance(val, (float, int)):
                     self._param_root_names.append(key)
                     self.def_vals[key] = val
                 elif val is None:
@@ -519,17 +540,21 @@ class Model:
 
         new_opts = {}
         for opt, val in self.opts.items():
-            if (opt in self._param_root_names or opt in might_be_param and
-                    isinstance(val, Parameter)):
-                self.set_param_hint(opt, value=val.value,
-                                    min=val.min, max=val.max, expr=val.expr)
+            if (
+                opt in self._param_root_names
+                or opt in might_be_param
+                and isinstance(val, Parameter)
+            ):
+                self.set_param_hint(
+                    opt, value=val.value, min=val.min, max=val.max, expr=val.expr
+                )
             elif opt in self._func_allargs:
                 new_opts[opt] = val
         self.opts = new_opts
 
         names = []
         if self._prefix is None:
-            self._prefix = ''
+            self._prefix = ""
         for pname in self._param_root_names:
             names.append(f"{self._prefix}{pname}")
 
@@ -540,8 +565,7 @@ class Model:
             if arg not in allargs or arg in self._forbidden_args:
                 raise ValueError(self._invalid_ivar % (arg, fname))
         for arg in names:
-            if (self._strip_prefix(arg) not in allargs or
-                    arg in self._forbidden_args):
+            if self._strip_prefix(arg) not in allargs or arg in self._forbidden_args:
                 raise ValueError(self._invalid_par % (arg, fname))
         # the following as been changed from OrderedSet for the time being.
         self._param_names = names[:]
@@ -608,14 +632,26 @@ class Model:
 
         """
         name_len = max(len(s) for s in self.param_hints)
-        print('{:{name_len}}  {:>{n}} {:>{n}} {:>{n}} {:>{n}}    {:{n}}'
-              .format('Name', 'Value', 'Min', 'Max', 'Vary', 'Expr',
-                      name_len=name_len, n=colwidth))
-        line = ('{name:<{name_len}}  {value:{n}g} {min:{n}g} {max:{n}g} '
-                '{vary!s:>{n}}    {expr}')
+        print(
+            "{:{name_len}}  {:>{n}} {:>{n}} {:>{n}} {:>{n}}    {:{n}}".format(
+                "Name",
+                "Value",
+                "Min",
+                "Max",
+                "Vary",
+                "Expr",
+                name_len=name_len,
+                n=colwidth,
+            )
+        )
+        line = (
+            "{name:<{name_len}}  {value:{n}g} {min:{n}g} {max:{n}g} "
+            "{vary!s:>{n}}    {expr}"
+        )
         for name, values in sorted(self.param_hints.items()):
-            pvalues = dict(name=name, value=np.nan, min=-np.inf, max=np.inf,
-                           vary=True, expr='')
+            pvalues = dict(
+                name=name, value=np.nan, min=-np.inf, max=np.inf, vary=True, expr=""
+            )
             pvalues.update(**values)
             print(line.format(name_len=name_len, n=colwidth, **pvalues))
 
@@ -652,7 +688,7 @@ class Model:
             else:
                 par = Parameter(name=name)
             par._delay_asteval = True
-            basename = name[len(self._prefix):]
+            basename = name[len(self._prefix) :]
             # apply defaults from model function definition
             if basename in self.def_vals:
                 par.value = self.def_vals[basename]
@@ -739,7 +775,7 @@ class Model:
 
         """
         cname = self.__class__.__name__
-        msg = f'guess() not implemented for {cname}'
+        msg = f"guess() not implemented for {cname}"
         raise NotImplementedError(msg)
 
     def _residual(self, params, data, weights, **kwargs):
@@ -762,11 +798,13 @@ class Model:
 
         """
         model = self.eval(params, **kwargs)
-        if self.nan_policy == 'raise' and not np.all(np.isfinite(model)):
-            msg = ('The model function generated NaN values and the fit '
-                   'aborted! Please check your model function and/or set '
-                   'boundaries on parameters where applicable. In cases like '
-                   'this, using "nan_policy=\'omit\'" will probably not work.')
+        if self.nan_policy == "raise" and not np.all(np.isfinite(model)):
+            msg = (
+                "The model function generated NaN values and the fit "
+                "aborted! Please check your model function and/or set "
+                "boundaries on parameters where applicable. In cases like "
+                "this, using \"nan_policy='omit'\" will probably not work."
+            )
             raise ValueError(msg)
 
         diff = model - data
@@ -807,12 +845,13 @@ class Model:
         model = self.eval_fast(nvars, **kwargs)
 
         # check for NaN at the first iteration
-        if nfev < 0:
-            if self.nan_policy == 'raise' and not np.all(np.isfinite(model)):
-                msg = ('The model function generated NaN values and the fit '
-                    'aborted! Please check your model function and/or set '
-                    'boundaries on parameters where applicable. In cases like '
-                    'this, using "nan_policy=\'omit\'" will probably not work.')
+            if self.nan_policy == "raise" and not np.all(np.isfinite(model)):
+                msg = (
+                    "The model function generated NaN values and the fit "
+                    "aborted! Please check your model function and/or set "
+                    "boundaries on parameters where applicable. In cases like "
+                    "this, using \"nan_policy='omit'\" will probably not work."
+                )
                 raise ValueError(msg)
 
         diff = model - data
@@ -855,7 +894,7 @@ class Model:
             if name in self._func_allargs or self._func_haskeywords:
                 # out[name] = par.value
                 out[name] = par.value
-                
+
         # 2. for each function argument, use 'prefix+varname' in params,
         # avoiding possible name collisions with unprefixed params
         if len(self._prefix) > 0:
@@ -947,10 +986,23 @@ class Model:
         if len(key) < 1:
             key = self._name
         return {key: self.eval(params=params, **kwargs)}
-    
-    def fit(self, data, params=None, weights=None, method='leastsq',
-            iter_cb=None, scale_covar=True, verbose=False, fit_kws=None,
-            nan_policy=None, calc_covar=True, max_nfev=None, fast=False, **kwargs):
+
+    def fit(
+        self,
+        data,
+        params=None,
+        weights=None,
+        method="leastsq",
+        iter_cb=None,
+        scale_covar=True,
+        verbose=False,
+        fit_kws=None,
+        nan_policy=None,
+        calc_covar=True,
+        max_nfev=None,
+        fast=False,
+        **kwargs,
+    ):
         """Fit the model to the data using the supplied Parameters.
 
         Parameters
@@ -1041,22 +1093,27 @@ class Model:
         # All remaining kwargs should correspond to independent variables.
         for name in kwargs:
             if name not in self.independent_vars:
-                warnings.warn(f"The keyword argument {name} does not " +
-                              "match any arguments of the model function. " +
-                              "It will be ignored.", UserWarning)
+                warnings.warn(
+                    f"The keyword argument {name} does not "
+                    + "match any arguments of the model function. "
+                    + "It will be ignored.",
+                    UserWarning,
+                )
 
         # If any parameter is not initialized raise a more helpful error.
         missing_param = any(p not in params.keys() for p in self.param_names)
-        blank_param = any((p.value is None and p.expr is None)
-                          for p in params.values())
+        blank_param = any((p.value is None and p.expr is None) for p in params.values())
         if missing_param or blank_param:
-            msg = ('Assign each parameter an initial value by passing '
-                   'Parameters or keyword arguments to fit.\n')
+            msg = (
+                "Assign each parameter an initial value by passing "
+                "Parameters or keyword arguments to fit.\n"
+            )
             missing = [p for p in self.param_names if p not in params.keys()]
-            blank = [name for name, p in params.items()
-                     if p.value is None and p.expr is None]
-            msg += f'Missing parameters: {str(missing)}\n'
-            msg += f'Non initialized parameters: {str(blank)}'
+            blank = [
+                name for name, p in params.items() if p.value is None and p.expr is None
+            ]
+            msg += f"Missing parameters: {str(missing)}\n"
+            msg += f"Non initialized parameters: {str(blank)}"
             raise ValueError(msg)
 
         # Handle null/missing values.
@@ -1064,7 +1121,7 @@ class Model:
             self.nan_policy = nan_policy
 
         mask = None
-        if self.nan_policy == 'omit':
+        if self.nan_policy == "omit":
             mask = ~isnull(data)
             if mask is not None:
                 data = data[mask]
@@ -1081,7 +1138,7 @@ class Model:
         if np.isrealobj(data):
             data = np.asfarray(data)
         elif np.iscomplexobj(data):
-            data = np.asarray(data, dtype='complex128')
+            data = np.asarray(data, dtype="complex128")
 
         # Coerce `dtype` for independent variable(s) to `float64` or
         # `complex128` when the variable has one of the following types: list,
@@ -1092,15 +1149,24 @@ class Model:
                 if np.isrealobj(var_data):
                     kwargs[var] = np.asfarray(var_data)
                 elif np.iscomplexobj(var_data):
-                    kwargs[var] = np.asarray(var_data, dtype='complex128')
+                    kwargs[var] = np.asarray(var_data, dtype="complex128")
 
         if fit_kws is None:
             fit_kws = {}
 
-        output = ModelResult(self, params, method=method, iter_cb=iter_cb,
-                             scale_covar=scale_covar, fcn_kws=kwargs,
-                             nan_policy=self.nan_policy, calc_covar=calc_covar,
-                             max_nfev=max_nfev, fast=fast, **fit_kws)
+        output = ModelResult(
+            self,
+            params,
+            method=method,
+            iter_cb=iter_cb,
+            scale_covar=scale_covar,
+            fcn_kws=kwargs,
+            nan_policy=self.nan_policy,
+            calc_covar=calc_covar,
+            max_nfev=max_nfev,
+            fast=fast,
+            **fit_kws,
+        )
         output.fit(data=data, weights=weights)
         output.components = self.components
         return output
@@ -1133,8 +1199,12 @@ class CompositeModel(Model):
 
     """
 
-    _known_ops = {operator.add: '+', operator.sub: '-',
-                  operator.mul: '*', operator.truediv: '/'}
+    _known_ops = {
+        operator.add: "+",
+        operator.sub: "-",
+        operator.mul: "*",
+        operator.truediv: "/",
+    }
 
     def __init__(self, left, right, op, **kws):
         """
@@ -1156,11 +1226,11 @@ class CompositeModel(Model):
 
         """
         if not isinstance(left, Model):
-            raise ValueError(f'CompositeModel: argument {left} is not a Model')
+            raise ValueError(f"CompositeModel: argument {left} is not a Model")
         if not isinstance(right, Model):
-            raise ValueError(f'CompositeModel: argument {right} is not a Model')
+            raise ValueError(f"CompositeModel: argument {right} is not a Model")
         if not callable(op):
-            raise ValueError(f'CompositeModel: operator {op} is not callable')
+            raise ValueError(f"CompositeModel: operator {op} is not callable")
 
         self.left = left
         self.right = right
@@ -1168,20 +1238,23 @@ class CompositeModel(Model):
 
         name_collisions = set(left.param_names) & set(right.param_names)
         if len(name_collisions) > 0:
-            msg = ''
+            msg = ""
             for collision in name_collisions:
-                msg += (f"\nTwo models have parameters named '{collision}'; "
-                        "use distinct names.")
+                msg += (
+                    f"\nTwo models have parameters named '{collision}'; "
+                    "use distinct names."
+                )
             raise NameError(msg)
 
         # we assume that all the sub-models have the same independent vars
-        if 'independent_vars' not in kws:
-            kws['independent_vars'] = self.left.independent_vars
-        if 'nan_policy' not in kws:
-            kws['nan_policy'] = self.left.nan_policy
+        if "independent_vars" not in kws:
+            kws["independent_vars"] = self.left.independent_vars
+        if "nan_policy" not in kws:
+            kws["nan_policy"] = self.left.nan_policy
 
         def _tmp(self, *args, **kws):
             pass
+
         Model.__init__(self, _tmp, **kws)
 
         for side in (left, right):
@@ -1190,25 +1263,29 @@ class CompositeModel(Model):
                 self.param_hints[f"{prefix}{basename}"] = hint
 
     def _parse_params(self):
-        self._func_haskeywords = (self.left._func_haskeywords or
-                                  self.right._func_haskeywords)
-        self._func_allargs = (self.left._func_allargs +
-                              self.right._func_allargs)
+        self._func_haskeywords = (
+            self.left._func_haskeywords or self.right._func_haskeywords
+        )
+        self._func_allargs = self.left._func_allargs + self.right._func_allargs
         self.def_vals = deepcopy(self.right.def_vals)
         self.def_vals.update(self.left.def_vals)
         self.opts = deepcopy(self.right.opts)
         self.opts.update(self.left.opts)
 
     def _reprstring(self, long=False):
-        return (f"({self.left._reprstring(long=long)} "
-                f"{self._known_ops.get(self.op, self.op)} "
-                f"{self.right._reprstring(long=long)})")
+        return (
+            f"({self.left._reprstring(long=long)} "
+            f"{self._known_ops.get(self.op, self.op)} "
+            f"{self.right._reprstring(long=long)})"
+        )
 
     def eval(self, params=None, **kwargs):
         """Evaluate model function for composite model."""
         # print("composite eval: ", params)
-        return self.op(self.left.eval(params=params, **kwargs),
-                       self.right.eval(params=params, **kwargs))
+        return self.op(
+            self.left.eval(params=params, **kwargs),
+            self.right.eval(params=params, **kwargs),
+        )
 
     def eval_components(self, **kwargs):
         """Return dictionary of name, results for each component."""
@@ -1227,8 +1304,7 @@ class CompositeModel(Model):
         return self.left.components + self.right.components
 
     def _get_state(self):
-        return (self.left._get_state(),
-                self.right._get_state(), self.op.__name__)
+        return (self.left._get_state(), self.right._get_state(), self.op.__name__)
 
     def _set_state(self, state, funcdefs=None):
         return _buildmodel(state, funcdefs=funcdefs)
@@ -1251,7 +1327,7 @@ def save_model(model, fname):
         Name of file for saved Model.
 
     """
-    with open(fname, 'w') as fout:
+    with open(fname, "w") as fout:
         model.dump(fout)
 
 
@@ -1295,25 +1371,35 @@ def _buildmodel(state, funcdefs=None):
 
     left, right, op = state
     if op is None and right is None:
-        (fname, fcndef, name, prefix, ivars, pnames,
-         phints, nan_policy, opts) = left
+        (fname, fcndef, name, prefix, ivars, pnames, phints, nan_policy, opts) = left
         if not callable(fcndef) and fname in known_funcs:
             fcndef = known_funcs[fname]
 
         if fcndef is None:
             raise ValueError("Cannot restore Model: model function not found")
 
-        if fname == '_eval' and isinstance(fcndef, str):
+        if fname == "_eval" and isinstance(fcndef, str):
             from .models import ExpressionModel
-            model = ExpressionModel(fcndef, name=name,
-                                    independent_vars=ivars,
-                                    param_names=pnames,
-                                    nan_policy=nan_policy, **opts)
+
+            model = ExpressionModel(
+                fcndef,
+                name=name,
+                independent_vars=ivars,
+                param_names=pnames,
+                nan_policy=nan_policy,
+                **opts,
+            )
 
         else:
-            model = Model(fcndef, name=name, prefix=prefix,
-                          independent_vars=ivars, param_names=pnames,
-                          nan_policy=nan_policy, **opts)
+            model = Model(
+                fcndef,
+                name=name,
+                prefix=prefix,
+                independent_vars=ivars,
+                param_names=pnames,
+                nan_policy=nan_policy,
+                **opts,
+            )
 
         for name, hint in phints.items():
             model.set_param_hint(name, **hint)
@@ -1335,7 +1421,7 @@ def save_modelresult(modelresult, fname):
         Name of file for saved ModelResult.
 
     """
-    with open(fname, 'w') as fout:
+    with open(fname, "w") as fout:
         modelresult.dump(fout)
 
 
@@ -1371,10 +1457,23 @@ class ModelResult(Minimizer):
 
     """
 
-    def __init__(self, model, params, data=None, weights=None,
-                 method='leastsq', fcn_args=None, fcn_kws=None,
-                 iter_cb=None, scale_covar=True, nan_policy='raise',
-                 calc_covar=True, max_nfev=None, fast=True, **fit_kws):
+    def __init__(
+        self,
+        model,
+        params,
+        data=None,
+        weights=None,
+        method="leastsq",
+        fcn_args=None,
+        fcn_kws=None,
+        iter_cb=None,
+        scale_covar=True,
+        nan_policy="raise",
+        calc_covar=True,
+        max_nfev=None,
+        fast=True,
+        **fit_kws,
+    ):
         """
         Parameters
         ----------
@@ -1417,20 +1516,43 @@ class ModelResult(Minimizer):
         self.user_options = None
         self.init_params = deepcopy(params)
         if fast:
-            Minimizer.__init__(self, model._residual_fast, params,
-                           fcn_args=fcn_args, fcn_kws=fcn_kws,
-                           iter_cb=iter_cb, nan_policy=nan_policy,
-                           scale_covar=scale_covar, calc_covar=calc_covar,
-                           max_nfev=max_nfev, **fit_kws)
+            Minimizer.__init__(
+                self,
+                model._residual_fast,
+                params,
+                fcn_args=fcn_args,
+                fcn_kws=fcn_kws,
+                iter_cb=iter_cb,
+                nan_policy=nan_policy,
+                scale_covar=scale_covar,
+                calc_covar=calc_covar,
+                max_nfev=max_nfev,
+                **fit_kws,
+            )
         else:
-            Minimizer.__init__(self, model._residual, params,
-                           fcn_args=fcn_args, fcn_kws=fcn_kws,
-                           iter_cb=iter_cb, nan_policy=nan_policy,
-                           scale_covar=scale_covar, calc_covar=calc_covar,
-                           max_nfev=max_nfev, **fit_kws)
-    
-    def fit(self, data=None, params=None, weights=None, method=None,
-            nan_policy=None, **kwargs):
+            Minimizer.__init__(
+                self,
+                model._residual,
+                params,
+                fcn_args=fcn_args,
+                fcn_kws=fcn_kws,
+                iter_cb=iter_cb,
+                nan_policy=nan_policy,
+                scale_covar=scale_covar,
+                calc_covar=calc_covar,
+                max_nfev=max_nfev,
+                **fit_kws,
+            )
+
+    def fit(
+        self,
+        data=None,
+        params=None,
+        weights=None,
+        method=None,
+        nan_policy=None,
+        **kwargs,
+    ):
         """Re-perform fit for a Model, given data and params.
 
         Parameters
@@ -1585,7 +1707,7 @@ class ModelResult(Minimizer):
         for i in range(nvarys):
             pname = self.var_names[i]
             val0 = pars[pname].value
-            dval = pars[pname].stderr/3.0
+            dval = pars[pname].stderr / 3.0
 
             pars[pname].value = val0 + dval
             res1 = self.model.eval(pars, **userkws)
@@ -1594,17 +1716,17 @@ class ModelResult(Minimizer):
             res2 = self.model.eval(pars, **userkws)
 
             pars[pname].value = val0
-            fjac[i] = (res1 - res2) / (2*dval)
+            fjac[i] = (res1 - res2) / (2 * dval)
 
         for i in range(nvarys):
             for j in range(nvarys):
-                df2 += fjac[i]*fjac[j]*covar[i, j]
+                df2 += fjac[i] * fjac[j] * covar[i, j]
 
         if sigma < 1.0:
             prob = sigma
         else:
-            prob = erf(sigma/np.sqrt(2))
-        return np.sqrt(df2) * t.ppf((prob+1)/2.0, self.ndata-nvarys)
+            prob = erf(sigma / np.sqrt(2))
+        return np.sqrt(df2) * t.ppf((prob + 1) / 2.0, self.ndata - nvarys)
 
     def conf_interval(self, **kwargs):
         """Calculate the confidence intervals for the variable parameters.
@@ -1640,11 +1762,13 @@ class ModelResult(Minimizer):
             Text of formatted report on confidence intervals.
 
         """
-        return ci_report(self.conf_interval(**kwargs),
-                         with_offset=with_offset, ndigits=ndigits)
+        return ci_report(
+            self.conf_interval(**kwargs), with_offset=with_offset, ndigits=ndigits
+        )
 
-    def fit_report(self, modelpars=None, show_correl=True,
-                   min_correl=0.1, sort_pars=False):
+    def fit_report(
+        self, modelpars=None, show_correl=True, min_correl=0.1, sort_pars=False
+    ):
         """Return a printable fit report.
 
         The report contains fit statistics and best-fit values with
@@ -1672,16 +1796,21 @@ class ModelResult(Minimizer):
             Multi-line text of fit report.
 
         """
-        report = fit_report(self, modelpars=modelpars,
-                            show_correl=show_correl,
-                            min_correl=min_correl, sort_pars=sort_pars)
+        report = fit_report(
+            self,
+            modelpars=modelpars,
+            show_correl=show_correl,
+            min_correl=min_correl,
+            sort_pars=sort_pars,
+        )
         modname = self.model._reprstring(long=True)
-        return f'[[Model]]\n    {modname}\n{report}'
+        return f"[[Model]]\n    {modname}\n{report}"
 
     def _repr_html_(self, show_correl=True, min_correl=0.1):
         """Return a HTML representation of parameters data."""
-        report = fitreport_html_table(self, show_correl=show_correl,
-                                      min_correl=min_correl)
+        report = fitreport_html_table(
+            self, show_correl=show_correl, min_correl=min_correl
+        )
         modname = self.model._reprstring(long=True)
         return f"<h2> Model</h2> {modname} {report}"
 
@@ -1703,20 +1832,50 @@ class ModelResult(Minimizer):
         loads, json.dumps
 
         """
-        out = {'__class__': 'lmfit.ModelResult', '__version__': '1',
-               'model': encode4js(self.model._get_state())}
+        out = {
+            "__class__": "lmfit.ModelResult",
+            "__version__": "1",
+            "model": encode4js(self.model._get_state()),
+        }
         pasteval = self.params._asteval
-        out['params'] = [p.__getstate__() for p in self.params.values()]
-        out['unique_symbols'] = {key: encode4js(pasteval.symtable[key])
-                                 for key in pasteval.user_defined_symbols()}
+        out["params"] = [p.__getstate__() for p in self.params.values()]
+        out["unique_symbols"] = {
+            key: encode4js(pasteval.symtable[key])
+            for key in pasteval.user_defined_symbols()
+        }
 
-        for attr in ('aborted', 'aic', 'best_values', 'bic', 'chisqr',
-                     'ci_out', 'col_deriv', 'covar', 'errorbars',
-                     'flatchain', 'ier', 'init_values', 'lmdif_message',
-                     'message', 'method', 'nan_policy', 'ndata', 'nfev',
-                     'nfree', 'nvarys', 'redchi', 'scale_covar', 'calc_covar',
-                     'success', 'userargs', 'userkws', 'values', 'var_names',
-                     'weights', 'user_options'):
+        for attr in (
+            "aborted",
+            "aic",
+            "best_values",
+            "bic",
+            "chisqr",
+            "ci_out",
+            "col_deriv",
+            "covar",
+            "errorbars",
+            "flatchain",
+            "ier",
+            "init_values",
+            "lmdif_message",
+            "message",
+            "method",
+            "nan_policy",
+            "ndata",
+            "nfev",
+            "nfree",
+            "nvarys",
+            "redchi",
+            "scale_covar",
+            "calc_covar",
+            "success",
+            "userargs",
+            "userkws",
+            "values",
+            "var_names",
+            "weights",
+            "user_options",
+        ):
             try:
                 val = getattr(self, attr)
             except AttributeError:
@@ -1726,9 +1885,9 @@ class ModelResult(Minimizer):
 
             out[attr] = encode4js(val)
 
-        val = out.get('message', '')
+        val = out.get("message", "")
         if isinstance(val, bytes):
-            out['message'] = str(val, encoding='ASCII')
+            out["message"] = str(val, encoding="ASCII")
 
         return json.dumps(out, **kws)
 
@@ -1778,40 +1937,69 @@ class ModelResult(Minimizer):
 
         """
         modres = json.loads(s, **kws)
-        if 'modelresult' not in modres['__class__'].lower():
-            raise AttributeError('ModelResult.loads() needs saved ModelResult')
+        if "modelresult" not in modres["__class__"].lower():
+            raise AttributeError("ModelResult.loads() needs saved ModelResult")
 
         modres = decode4js(modres)
-        if 'model' not in modres or 'params' not in modres:
-            raise AttributeError('ModelResult.loads() needs valid ModelResult')
+        if "model" not in modres or "params" not in modres:
+            raise AttributeError("ModelResult.loads() needs valid ModelResult")
 
         # model
-        self.model = _buildmodel(decode4js(modres['model']), funcdefs=funcdefs)
+        self.model = _buildmodel(decode4js(modres["model"]), funcdefs=funcdefs)
 
         # params
         self.params = Parameters()
         self.init_params = Parameters()
-        state = {'unique_symbols': modres['unique_symbols'], 'params': []}
-        ini_state = {'unique_symbols': modres['unique_symbols'], 'params': []}
-        for parstate in modres['params']:
-            _par = Parameter(name='')
+        state = {"unique_symbols": modres["unique_symbols"], "params": []}
+        ini_state = {"unique_symbols": modres["unique_symbols"], "params": []}
+        for parstate in modres["params"]:
+            _par = Parameter(name="")
             _par.__setstate__(parstate)
-            state['params'].append(_par)
-            _par = Parameter(name='')
+            state["params"].append(_par)
+            _par = Parameter(name="")
             _par.__setstate__(parstate)
-            ini_state['params'].append(_par)
+            ini_state["params"].append(_par)
 
         self.params.__setstate__(state)
         self.init_params.__setstate__(ini_state)
 
-        for attr in ('aborted', 'aic', 'best_fit', 'best_values', 'bic',
-                     'chisqr', 'ci_out', 'col_deriv', 'covar', 'data',
-                     'errorbars', 'fjac', 'flatchain', 'ier', 'init_fit',
-                     'init_values', 'kws', 'lmdif_message', 'message',
-                     'method', 'nan_policy', 'ndata', 'nfev', 'nfree',
-                     'nvarys', 'redchi', 'residual', 'scale_covar',
-                     'calc_covar', 'success', 'userargs', 'userkws',
-                     'var_names', 'weights', 'user_options'):
+        for attr in (
+            "aborted",
+            "aic",
+            "best_fit",
+            "best_values",
+            "bic",
+            "chisqr",
+            "ci_out",
+            "col_deriv",
+            "covar",
+            "data",
+            "errorbars",
+            "fjac",
+            "flatchain",
+            "ier",
+            "init_fit",
+            "init_values",
+            "kws",
+            "lmdif_message",
+            "message",
+            "method",
+            "nan_policy",
+            "ndata",
+            "nfev",
+            "nfree",
+            "nvarys",
+            "redchi",
+            "residual",
+            "scale_covar",
+            "calc_covar",
+            "success",
+            "userargs",
+            "userkws",
+            "var_names",
+            "weights",
+            "user_options",
+        ):
             setattr(self, attr, decode4js(modres.get(attr, None)))
 
         self.best_fit = self.model.eval(self.params, **self.userkws)
@@ -1855,10 +2043,24 @@ class ModelResult(Minimizer):
         return self.loads(fp.read(), funcdefs=funcdefs, **kws)
 
     @_ensureMatplotlib
-    def plot_fit(self, ax=None, datafmt='o', fitfmt='-', initfmt='--',
-                 xlabel=None, ylabel=None, yerr=None, numpoints=None,
-                 data_kws=None, fit_kws=None, init_kws=None, ax_kws=None,
-                 show_init=False, parse_complex='abs', title=None):
+    def plot_fit(
+        self,
+        ax=None,
+        datafmt="o",
+        fitfmt="-",
+        initfmt="--",
+        xlabel=None,
+        ylabel=None,
+        yerr=None,
+        numpoints=None,
+        data_kws=None,
+        fit_kws=None,
+        init_kws=None,
+        ax_kws=None,
+        show_init=False,
+        parse_complex="abs",
+        title=None,
+    ):
         """Plot the fit results using matplotlib, if available.
 
         The plot will include the data points, the initial fit curve
@@ -1932,6 +2134,7 @@ class ModelResult(Minimizer):
 
         """
         from matplotlib import pyplot as plt
+
         if data_kws is None:
             data_kws = {}
         if fit_kws is None:
@@ -1947,8 +2150,10 @@ class ModelResult(Minimizer):
         if len(self.model.independent_vars) == 1:
             independent_var = self.model.independent_vars[0]
         else:
-            print('Fit can only be plotted if the model function has one '
-                  'independent variable.')
+            print(
+                "Fit can only be plotted if the model function has one "
+                "independent variable."
+            )
             return False
 
         if not isinstance(ax, plt.Axes):
@@ -1963,54 +2168,77 @@ class ModelResult(Minimizer):
             x_array_dense = x_array
 
         if show_init:
-            y_eval_init = self.model.eval(self.init_params,
-                                          **{independent_var: x_array_dense})
-            if isinstance(self.model, (lmfit.models.ConstantModel,
-                                       lmfit.models.ComplexConstantModel)):
+            y_eval_init = self.model.eval(
+                self.init_params, **{independent_var: x_array_dense}
+            )
+            if isinstance(
+                self.model,
+                (lmfit.models.ConstantModel, lmfit.models.ComplexConstantModel),
+            ):
                 y_eval_init *= np.ones(x_array_dense.size)
 
             ax.plot(
-                x_array_dense, reduce_complex(y_eval_init), initfmt,
-                label='initial fit', **init_kws)
+                x_array_dense,
+                reduce_complex(y_eval_init),
+                initfmt,
+                label="initial fit",
+                **init_kws,
+            )
 
         if yerr is None and self.weights is not None:
-            yerr = 1.0/self.weights
+            yerr = 1.0 / self.weights
 
         if yerr is not None:
-            ax.errorbar(x_array, reduce_complex(self.data),
-                        yerr=propagate_err(self.data, yerr, parse_complex),
-                        fmt=datafmt, label='data', **data_kws)
+            ax.errorbar(
+                x_array,
+                reduce_complex(self.data),
+                yerr=propagate_err(self.data, yerr, parse_complex),
+                fmt=datafmt,
+                label="data",
+                **data_kws,
+            )
         else:
-            ax.plot(x_array, reduce_complex(self.data),
-                    datafmt, label='data', **data_kws)
+            ax.plot(
+                x_array, reduce_complex(self.data), datafmt, label="data", **data_kws
+            )
 
         y_eval = self.model.eval(self.params, **{independent_var: x_array_dense})
-        if isinstance(self.model, (lmfit.models.ConstantModel,
-                                   lmfit.models.ComplexConstantModel)):
+        if isinstance(
+            self.model, (lmfit.models.ConstantModel, lmfit.models.ComplexConstantModel)
+        ):
             y_eval *= np.ones(x_array_dense.size)
 
-        ax.plot(x_array_dense, reduce_complex(y_eval), fitfmt, label='best fit',
-                **fit_kws)
+        ax.plot(
+            x_array_dense, reduce_complex(y_eval), fitfmt, label="best fit", **fit_kws
+        )
 
         if title:
             ax.set_title(title)
-        elif ax.get_title() == '':
+        elif ax.get_title() == "":
             ax.set_title(self.model.name)
         if xlabel is None:
             ax.set_xlabel(independent_var)
         else:
             ax.set_xlabel(xlabel)
         if ylabel is None:
-            ax.set_ylabel('y')
+            ax.set_ylabel("y")
         else:
             ax.set_ylabel(ylabel)
         ax.legend()
         return ax
 
     @_ensureMatplotlib
-    def plot_residuals(self, ax=None, datafmt='o', yerr=None, data_kws=None,
-                       fit_kws=None, ax_kws=None, parse_complex='abs',
-                       title=None):
+    def plot_residuals(
+        self,
+        ax=None,
+        datafmt="o",
+        yerr=None,
+        data_kws=None,
+        fit_kws=None,
+        ax_kws=None,
+        parse_complex="abs",
+        title=None,
+    ):
         """Plot the fit residuals using matplotlib, if available.
 
         If `yerr` is supplied or if the model included weights, errorbars
@@ -2064,6 +2292,7 @@ class ModelResult(Minimizer):
 
         """
         from matplotlib import pyplot as plt
+
         if data_kws is None:
             data_kws = {}
         if fit_kws is None:
@@ -2077,8 +2306,10 @@ class ModelResult(Minimizer):
         if len(self.model.independent_vars) == 1:
             independent_var = self.model.independent_vars[0]
         else:
-            print('Fit can only be plotted if the model function has one '
-                  'independent variable.')
+            print(
+                "Fit can only be plotted if the model function has one "
+                "independent variable."
+            )
             return False
 
         if not isinstance(ax, plt.Axes):
@@ -2086,36 +2317,57 @@ class ModelResult(Minimizer):
 
         x_array = self.userkws[independent_var]
 
-        ax.axhline(0, **fit_kws, color='k')
+        ax.axhline(0, **fit_kws, color="k")
 
         y_eval = self.model.eval(self.params, **{independent_var: x_array})
-        if isinstance(self.model, (lmfit.models.ConstantModel,
-                                   lmfit.models.ComplexConstantModel)):
+        if isinstance(
+            self.model, (lmfit.models.ConstantModel, lmfit.models.ComplexConstantModel)
+        ):
             y_eval *= np.ones(x_array.size)
 
         if yerr is None and self.weights is not None:
-            yerr = 1.0/self.weights
+            yerr = 1.0 / self.weights
 
         residuals = reduce_complex(self.eval()) - reduce_complex(self.data)
         if yerr is not None:
-            ax.errorbar(x_array, residuals,
-                        yerr=propagate_err(self.data, yerr, parse_complex),
-                        fmt=datafmt, **data_kws)
+            ax.errorbar(
+                x_array,
+                residuals,
+                yerr=propagate_err(self.data, yerr, parse_complex),
+                fmt=datafmt,
+                **data_kws,
+            )
         else:
             ax.plot(x_array, residuals, datafmt, **data_kws)
 
         if title:
             ax.set_title(title)
-        elif ax.get_title() == '':
+        elif ax.get_title() == "":
             ax.set_title(self.model.name)
-        ax.set_ylabel('residuals')
+        ax.set_ylabel("residuals")
         return ax
 
     @_ensureMatplotlib
-    def plot(self, datafmt='o', fitfmt='-', initfmt='--', xlabel=None,
-             ylabel=None, yerr=None, numpoints=None, fig=None, data_kws=None,
-             fit_kws=None, init_kws=None, ax_res_kws=None, ax_fit_kws=None,
-             fig_kws=None, show_init=False, parse_complex='abs', title=None):
+    def plot(
+        self,
+        datafmt="o",
+        fitfmt="-",
+        initfmt="--",
+        xlabel=None,
+        ylabel=None,
+        yerr=None,
+        numpoints=None,
+        fig=None,
+        data_kws=None,
+        fit_kws=None,
+        init_kws=None,
+        ax_res_kws=None,
+        ax_fit_kws=None,
+        fig_kws=None,
+        show_init=False,
+        parse_complex="abs",
+        title=None,
+    ):
         """Plot the fit results and residuals using matplotlib.
 
         The method will produce a matplotlib figure (if package available)
@@ -2195,6 +2447,7 @@ class ModelResult(Minimizer):
 
         """
         from matplotlib import pyplot as plt
+
         if data_kws is None:
             data_kws = {}
         if fit_kws is None:
@@ -2207,14 +2460,16 @@ class ModelResult(Minimizer):
             ax_fit_kws = {}
 
         # make a square figure with side equal to the default figure's x-size
-        figxsize = plt.rcParams['figure.figsize'][0]
+        figxsize = plt.rcParams["figure.figsize"][0]
         fig_kws_ = dict(figsize=(figxsize, figxsize))
         if fig_kws is not None:
             fig_kws_.update(fig_kws)
 
         if len(self.model.independent_vars) != 1:
-            print('Fit can only be plotted if the model function has one '
-                  'independent variable.')
+            print(
+                "Fit can only be plotted if the model function has one "
+                "independent variable."
+            )
             return False
 
         if not isinstance(fig, plt.Figure):
@@ -2224,16 +2479,33 @@ class ModelResult(Minimizer):
         ax_res = fig.add_subplot(gs[0], **ax_res_kws)
         ax_fit = fig.add_subplot(gs[1], sharex=ax_res, **ax_fit_kws)
 
-        self.plot_fit(ax=ax_fit, datafmt=datafmt, fitfmt=fitfmt, yerr=yerr,
-                      initfmt=initfmt, xlabel=xlabel, ylabel=ylabel,
-                      numpoints=numpoints, data_kws=data_kws,
-                      fit_kws=fit_kws, init_kws=init_kws, ax_kws=ax_fit_kws,
-                      show_init=show_init, parse_complex=parse_complex,
-                      title=title)
-        self.plot_residuals(ax=ax_res, datafmt=datafmt, yerr=yerr,
-                            data_kws=data_kws, fit_kws=fit_kws,
-                            ax_kws=ax_res_kws, parse_complex=parse_complex,
-                            title=title)
+        self.plot_fit(
+            ax=ax_fit,
+            datafmt=datafmt,
+            fitfmt=fitfmt,
+            yerr=yerr,
+            initfmt=initfmt,
+            xlabel=xlabel,
+            ylabel=ylabel,
+            numpoints=numpoints,
+            data_kws=data_kws,
+            fit_kws=fit_kws,
+            init_kws=init_kws,
+            ax_kws=ax_fit_kws,
+            show_init=show_init,
+            parse_complex=parse_complex,
+            title=title,
+        )
+        self.plot_residuals(
+            ax=ax_res,
+            datafmt=datafmt,
+            yerr=yerr,
+            data_kws=data_kws,
+            fit_kws=fit_kws,
+            ax_kws=ax_res_kws,
+            parse_complex=parse_complex,
+            title=title,
+        )
         plt.setp(ax_res.get_xticklabels(), visible=False)
-        ax_fit.set_title('')
+        ax_fit.set_title("")
         return fig
