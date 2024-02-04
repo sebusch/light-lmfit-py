@@ -930,6 +930,48 @@ class Minimizer:
             self.result.params[name].value = best_vals[name]
         return cov_x
 
+    def _calculate_covariance_matrix_fast(self, fvars):
+        """Calculate the covariance matrix.
+
+        The ``numdiftoools`` package is used to estimate the Hessian
+        matrix, and the covariance matrix is calculated as:
+
+        .. math::
+
+            cov_x = inverse(Hessian) * 2.0
+
+        Parameters
+        ----------
+        fvars : numpy.ndarray
+            Array of the optimal internal, freely variable parameters.
+
+        Returns
+        -------
+        cov_x : numpy.ndarray or None
+            Covariance matrix if successful, otherwise None.
+
+        """
+        warnings.filterwarnings(
+            action="ignore", module="scipy", message="^internal gelsd"
+        )
+
+        nfev = deepcopy(self.result.nfev)
+        best_vals = self.result.params.valuesdict()
+
+        try:
+            Hfun = ndt.Hessian(self.penalty_fast, step=1.0e-4)
+            hessian_ndt = Hfun(fvars)
+            cov_x = inv(hessian_ndt) * 2.0
+        except (LinAlgError, ValueError):
+            return None
+        finally:
+            self.result.nfev = nfev
+
+        # restore original values
+        for name in self.result.var_names:
+            self.result.params[name].value = best_vals[name]
+        return cov_x
+
     def _int2ext_cov_x(self, cov_int, fvars):
         """Transform covariance matrix to external parameter space.
 
@@ -2757,7 +2799,7 @@ class Minimizer:
             and HAS_NUMDIFFTOOLS
             and len(result.residual) > len(result.var_names)
         ):
-            _covar_ndt = self._calculate_covariance_matrix(result.x)
+            _covar_ndt = self._calculate_covariance_matrix_fast(result.x)
             if _covar_ndt is not None:
                 result.covar = self._int2ext_cov_x(_covar_ndt, result.x)
                 self._calculate_uncertainties_correlations()
